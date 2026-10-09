@@ -12,6 +12,7 @@
     "db:migrate": "tsx src/migrate.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.132.1",
     "@applyflux/form-engine": "workspace:*",
     "@applyflux/shared": "workspace:*",
     "@supabase/supabase-js": "2.47.10",

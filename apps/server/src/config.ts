@@ -28,9 +28,15 @@ const Env = z
     /** "supabase" in every real environment. "memory" exists only for automated tests. */
     STORAGE_DRIVER: z.enum(['supabase', 'memory']).default('supabase'),
 
-    AI_PROVIDER: z.enum(['openai', 'openrouter', 'none']).default('none'),
+    AI_PROVIDER: z.enum(['anthropic', 'openai', 'openrouter', 'none']).default('none'),
+    /** Optional second provider used when the primary errors (outage, rate limit, bad key). */
+    AI_FALLBACK_PROVIDER: z.enum(['anthropic', 'openai', 'openrouter', 'none']).default('none'),
+    ANTHROPIC_API_KEY: z.string().optional(),
+    /** Claude model id. Defaults to claude-opus-5-5. */
+    ANTHROPIC_MODEL: z.string().optional(),
     OPENAI_API_KEY: z.string().optional(),
     OPENROUTER_API_KEY: z.string().optional(),
+    /** OpenAI / OpenRouter model id. */
     AI_MODEL: z.string().optional(),
     AI_BASE_URL: z.string().url().optional(),
 
@@ -50,9 +56,15 @@ const Env = z
       ctx.addIssue({ code: 'custom', message: 'STORAGE_DRIVER=memory is not allowed in production' });
     if (!e.SUPABASE_JWT_SECRET && !e.SUPABASE_URL)
       ctx.addIssue({ code: 'custom', message: 'Set SUPABASE_URL (JWKS verification) or SUPABASE_JWT_SECRET' });
-    if (e.AI_PROVIDER === 'openai' && !e.OPENAI_API_KEY) ctx.addIssue({ code: 'custom', message: 'OPENAI_API_KEY is required when AI_PROVIDER=openai' });
-    if (e.AI_PROVIDER === 'openrouter' && !e.OPENROUTER_API_KEY)
-      ctx.addIssue({ code: 'custom', message: 'OPENROUTER_API_KEY is required when AI_PROVIDER=openrouter' });
+    const keyFor = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', openrouter: 'OPENROUTER_API_KEY' } as const;
+    for (const [field, provider] of [['AI_PROVIDER', e.AI_PROVIDER], ['AI_FALLBACK_PROVIDER', e.AI_FALLBACK_PROVIDER]] as const) {
+      if (provider === 'none') continue;
+      if (!e[keyFor[provider]]) ctx.addIssue({ code: 'custom', message: `${keyFor[provider]} is required when ${field}=${provider}` });
+    }
+    if (e.AI_FALLBACK_PROVIDER !== 'none' && e.AI_FALLBACK_PROVIDER === e.AI_PROVIDER)
+      ctx.addIssue({ code: 'custom', message: 'AI_FALLBACK_PROVIDER must differ from AI_PROVIDER' });
+    if (e.AI_FALLBACK_PROVIDER !== 'none' && e.AI_PROVIDER === 'none')
+      ctx.addIssue({ code: 'custom', message: 'Set AI_PROVIDER before AI_FALLBACK_PROVIDER' });
   });
 
 export type Config = z.infer<typeof Env>;

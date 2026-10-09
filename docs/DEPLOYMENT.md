@@ -30,14 +30,17 @@ ApplyFlux has three deployables, all built from this monorepo:
    - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
    - `DOWNLOAD_SIGNING_SECRET` (`openssl rand -hex 32`)
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
-   - optional: `AI_PROVIDER` + `OPENAI_API_KEY` / `OPENROUTER_API_KEY`, `EXTENSION_ORIGINS`, `VITE_EXTENSION_ID`, `AUTO_SUBMIT_PLATFORMS`
+   - AI: `AI_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`, `AI_FALLBACK_PROVIDER=openai`, `OPENAI_API_KEY`
+   - optional: `EXTENSION_ORIGINS`, `VITE_EXTENSION_ID`, `AUTO_SUBMIT_PLATFORMS`
 4. Deploy. Railway runs `pnpm install && pnpm build`, then `pnpm db:migrate` as the pre-deploy step (applies any new migrations before traffic switches), then `pnpm start`. `PORT` is supplied by Railway.
 5. The deploy is healthy when `GET /api/health` returns `{"data":{"ok":true,…}}` (Railway's health check uses this path).
 
 The server refuses to start with an invalid configuration and prints exactly which variable is wrong (see **Deploy Logs**).
 
 ### AI (optional)
-Set `AI_PROVIDER=openai` + `OPENAI_API_KEY`, or `AI_PROVIDER=openrouter` + `OPENROUTER_API_KEY` (optionally `AI_MODEL`). Without it, ApplyFlux uses rule-based resume extraction and asks the person for open-ended answers; the UI says so.
+- **Primary:** `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` uses Claude (`claude-opus-5-5` by default; override with `ANTHROPIC_MODEL`) through the official Anthropic SDK. If Claude declines a request on safety grounds, the API automatically retries it on another suitable Claude model in the same call.
+- **Fallback:** `AI_FALLBACK_PROVIDER=openai` + `OPENAI_API_KEY` (or `openrouter` + `OPENROUTER_API_KEY`). When the primary errors — outage, rate limit, bad key, malformed output — the same request goes to the fallback. A safety refusal is never re-sent to a different provider.
+- Either provider can be primary. Without any AI, ApplyFlux uses rule-based resume extraction and asks the person for open-ended answers; the UI says so.
 
 ## 3. The ApplyFlux Agent extension
 

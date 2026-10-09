@@ -53,7 +53,8 @@ Production runs on **Railway** (`railway.json` included): build `pnpm build`, pr
 See `.env.example`.
 - **Required (server):** `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `DOWNLOAD_SIGNING_SECRET`, `PUBLIC_API_URL`, `WEB_ORIGINS`.
 - **Required (web build):** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
-- **Optional:** `AI_PROVIDER` + `OPENAI_API_KEY`/`OPENROUTER_API_KEY`, `AI_MODEL`, `SUPABASE_JWT_SECRET`, `EXTENSION_ORIGINS`, `AUTO_SUBMIT_PLATFORMS`, `VITE_EXTENSION_ID`, `VITE_EXTENSION_STORE_URL`, `ENABLE_SANDBOX`.
+- **AI (optional):** `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` (Claude), with `AI_FALLBACK_PROVIDER=openai` + `OPENAI_API_KEY` as automatic failover.
+- **Optional:** `ANTHROPIC_MODEL`, `AI_MODEL`, `OPENROUTER_API_KEY`, `SUPABASE_JWT_SECRET`, `EXTENSION_ORIGINS`, `AUTO_SUBMIT_PLATFORMS`, `VITE_EXTENSION_ID`, `VITE_EXTENSION_STORE_URL`, `ENABLE_SANDBOX`.
 
 The server validates its configuration at startup and refuses to run with unsafe settings (e.g. in-memory storage in production).
 
@@ -67,7 +68,7 @@ The server validates its configuration at startup and refuses to run with unsafe
 - **Workday, iCIMS, Ashby and generic career pages** support filling plus Review or Assisted mode only. Workday usually requires an account sign-in, which ApplyFlux hands to you.
 - **LinkedIn (including Easy Apply) is not automated**, because its User Agreement prohibits automated access. Such jobs are detected and tracked, and you apply manually.
 - **Billing:** no payment provider is integrated. Plans and limits are configurable data, prices are unpublished (`NULL`), and an administrator assigns plans.
-- **Live services not verified from this build environment:** Supabase Auth/Storage/Realtime and the OpenAI/OpenRouter APIs. The code paths are implemented, and tests use a Postgres shim and an HTTP test double, so verify them on first deploy with real credentials.
+- **Live services not verified from this build environment:** Supabase Auth/Storage/Realtime and the Anthropic/OpenAI APIs. The code paths are implemented, and tests use a Postgres shim and an HTTP test double, so verify them on first deploy with real credentials.
 - **No official Cloudisoft logo** was available. The UI uses an ApplyFlux product mark and names Cloudisoft in text. Replace `apps/web/public/brand/` with official assets when available.
 - Scanned (image-only) PDFs aren't OCR'd. The user is asked for a text-based PDF or DOCX.
 - If the browser's service worker restarts mid-application, that application goes back to the queue, or to "Needs attention" if a submit was already clicked.
