@@ -9,3 +9,5 @@ test-results
 *.log
 .DS_Store
 apps/extension/release
+e2e/.server.pid
+e2e/.db-url

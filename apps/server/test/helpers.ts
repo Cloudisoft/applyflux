@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { SignJWT } from 'jose';
 import request from 'supertest';
@@ -12,6 +13,7 @@ import { migrate } from '../src/migrate';
 import type { AppContext } from '../src/context';
 import type { FetchJson } from '../src/services/discovery';
 
+const here = dirname(fileURLToPath(import.meta.url));
 export const JWT_SECRET = 'test-jwt-secret-at-least-32-characters-long!!';
 const ADMIN_URL = process.env.TEST_ADMIN_DATABASE_URL ?? 'postgres://applyflux:applyflux@localhost:5432/postgres';
 
@@ -24,9 +26,9 @@ export async function freshDatabase(name: string): Promise<string> {
   const url = ADMIN_URL.replace(/\/[^/]+$/, `/${name}`);
   const c = new pg.Client({ connectionString: url });
   await c.connect();
-  await c.query(readFileSync(resolve(__dirname, '../../../supabase/tests/supabase_shim.sql'), 'utf8'));
+  await c.query(readFileSync(resolve(here, '../../../supabase/tests/supabase_shim.sql'), 'utf8'));
   await c.end();
-  await migrate(url, resolve(__dirname, '../../../supabase/migrations'), { log: () => {} });
+  await migrate(url, resolve(here, '../../../supabase/migrations'), { log: () => {} });
   return url;
 }
 

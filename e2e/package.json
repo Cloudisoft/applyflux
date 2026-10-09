@@ -1,0 +1,1 @@
+{"name":"@applyflux/e2e","private":true,"type":"module","dependencies":{"@applyflux/shared":"workspace:*","jose":"5.9.6","pg":"8.13.1"},"devDependencies":{"@types/pg":"8.11.10"}}

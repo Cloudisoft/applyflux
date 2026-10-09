@@ -7,7 +7,7 @@ import { one, tx } from '../db';
 import { AppError, ah, notFound } from '../lib/errors';
 import { randomToken, requireExtension, sha256, verifyDownload, type ExtRequest } from '../lib/auth';
 import { resolveAnswers } from '../services/answers';
-import { claimNext, handleReport, heartbeat } from '../services/queue';
+import { claimNext, handleReport, heartbeat, pauseRun, startRun, stopRun, userAction } from '../services/queue';
 import { upsertJob, refreshMatches } from '../services/jobs';
 import { loadFullProfile } from '../services/profile';
 import { audit } from '../services/notify';
@@ -112,6 +112,15 @@ export function extRoutes(ctx: AppContext) {
       await refreshMatches(ctx.db, req.user.id, await loadFullProfile(ctx.db, req.user.id), [out.id]);
       res.status(out.created ? 201 : 200).json({ data: out });
     }),
+  );
+
+  // Run controls from the extension popup (the paired browser acts for its owner).
+  r.post('/run/start', ah<ExtRequest>(async (req, res) => res.json({ data: await startRun(ctx.db, req.user.id) })));
+  r.post('/run/pause', ah<ExtRequest>(async (req, res) => res.json({ data: await pauseRun(ctx.db, req.user.id) })));
+  r.post('/run/stop', ah<ExtRequest>(async (req, res) => res.json({ data: await stopRun(ctx.db, req.user.id) })));
+  r.post(
+    '/applications/:id/skip',
+    ah<ExtRequest>(async (req, res) => res.json({ data: await userAction(ctx.db, req.user.id, z.string().uuid().parse(req.params.id), { action: 'skip', reason: 'Skipped from the extension' }) })),
   );
 
   r.post(

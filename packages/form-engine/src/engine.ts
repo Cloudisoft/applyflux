@@ -3,6 +3,7 @@ import { classifyQuestion, isSensitive, questionKey } from '@applyflux/shared';
 import type { PlatformAdapter } from './adapters';
 import { challengeBlocking, detectAuthWall, detectChallenge, type ChallengeState, type WallKind } from './challenge';
 import { detectFields } from './detect';
+import { isVisible } from './dom';
 import { attachFile, fillField } from './fill';
 import { CONFIDENCE_FLOOR, mapField } from './mapping';
 import type { DetectedField, FieldResult, FileAttachment, MappedKey } from './types';
@@ -167,8 +168,10 @@ export async function runPass(doc: Document, ctx: EngineContext): Promise<PassRe
   base.results = results;
   base.missingRequired = results.filter((r) => r.field.required && (r.status === 'needs_input' || r.status === 'error'));
   base.uncertain = results.filter((r) => r.status === 'uncertain');
-  base.hasNext = !!adapter.nextButton(doc);
-  base.hasSubmit = !!adapter.submitButton(doc);
+  const next = adapter.nextButton(doc);
+  const submit = adapter.submitButton(doc);
+  base.hasNext = !!next && isVisible(next);
+  base.hasSubmit = !!submit && isVisible(submit);
   return base;
 }
 

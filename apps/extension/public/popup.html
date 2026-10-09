@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ApplyFlux Agent</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <img src="icons/icon-48.png" alt="" width="24" height="24" />
+    <div><strong>ApplyFlux Agent</strong><small>by Cloudisoft</small></div>
+    <span id="badge" class="badge">…</span>
+  </header>
+
+  <section id="pair" hidden>
+    <h2>Connect your account</h2>
+    <p>In ApplyFlux, open <b>Settings → Browser extension</b> and click <b>Connect extension</b>. Enter the 8-character code here.</p>
+    <form id="pair-form">
+      <label for="code">Pairing code</label>
+      <input id="code" autocomplete="off" placeholder="ABCD-2345" maxlength="9" required />
+      <button type="submit">Connect</button>
+    </form>
+    <p id="pair-error" class="error" role="alert"></p>
+  </section>
+
+  <section id="main" hidden>
+    <div id="current" class="card">
+      <div class="label">Status</div>
+      <div id="status-text">Idle</div>
+      <div id="job" class="muted"></div>
+    </div>
+    <div class="row">
+      <button id="start">Start</button>
+      <button id="pause" class="secondary">Pause</button>
+      <button id="stop" class="danger">Stop</button>
+    </div>
+    <button id="focus" class="secondary wide" hidden>Show application tab</button>
+    <div class="card">
+      <div class="label">Permissions</div>
+      <p class="muted">ApplyFlux only opens and reads the job pages you queued.</p>
+      <button id="grant-sites" class="secondary wide">Allow job sites</button>
+      <button id="grant-notify" class="secondary wide">Enable notifications</button>
+    </div>
+    <div class="links"><a id="open-app" href="#" target="_blank" rel="noopener">Open ApplyFlux</a> · <a href="#" id="disconnect">Disconnect</a></div>
+  </section>
+  <p id="error" class="error" role="alert"></p>
+  <script src="popup.js" type="module"></script>
+</body>
+</html>
