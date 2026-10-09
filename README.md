@@ -46,7 +46,7 @@ pnpm dev                          # API on :3001, web on :5173 (proxied /api)
 pnpm --filter @applyflux/extension build   # load apps/extension/dist in chrome://extensions
 ```
 
-Production (e.g. Replit): `pnpm build && pnpm db:migrate && pnpm start`. The API serves the web app from the same origin. See **docs/DEPLOYMENT.md**.
+Production runs on **Railway** (`railway.json` included): build `pnpm build`, pre-deploy `pnpm db:migrate`, start `pnpm start`. The API serves the web app from the same origin. See **docs/DEPLOYMENT.md**.
 
 ## Environment variables
 

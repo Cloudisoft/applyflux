@@ -1,7 +1,7 @@
 /**
  * Applies supabase/migrations/*.sql in order, recording each in
  * public.applyflux_migrations. Equivalent to `supabase db push` for
- * environments without the Supabase CLI (e.g. Replit).
+ * environments without the Supabase CLI.
  *   DATABASE_URL=... pnpm db:migrate
  */
 import { readdirSync, readFileSync } from 'node:fs';

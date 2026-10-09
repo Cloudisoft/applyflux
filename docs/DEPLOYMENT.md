@@ -4,7 +4,7 @@ ApplyFlux has three deployables, all built from this monorepo:
 
 | Part | Where it runs | Built by |
 |---|---|---|
-| API + web app (single origin) | Replit (or any Node 20+ host) | `pnpm build` → `apps/server/dist`, `apps/web/dist` |
+| API + web app (single origin) | Railway | `pnpm build` → `apps/server/dist`, `apps/web/dist` |
 | Database, auth, file storage, realtime | Supabase | `supabase/migrations/*.sql` |
 | ApplyFlux Agent (Chrome MV3) | Users' Chrome | `pnpm --filter @applyflux/extension build` → `apps/extension/dist` |
 
@@ -18,14 +18,23 @@ ApplyFlux has three deployables, all built from this monorepo:
 3. **Auth** → URL configuration: set Site URL to your web origin and add `https://<origin>/app/setup` and `https://<origin>/reset-password` to Redirect URLs. Enable "Confirm email" if you want email verification (the sign-up screen handles both cases).
 4. **Plans**: prices are `NULL` (shown as "Pricing not yet published"). Change limits or set prices with SQL, e.g. `update plans set price_cents = 1900, currency = 'USD' where id = 'pro';`. Move a user to a plan with `update subscriptions set plan_id = 'pro' where user_id = '…';` (no payment provider is integrated).
 
-## 2. API + web app on Replit
+## 2. API + web app on Railway
 
-1. Import the repository into Replit. `.replit` and `replit.nix` are included.
-2. Add the variables from `.env.example` as **Secrets** (server values and the `VITE_*` values — the web build reads `VITE_*` at build time). Required: `DATABASE_URL`, `DATABASE_SSL=true`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `DOWNLOAD_SIGNING_SECRET`, `PUBLIC_API_URL`, `WEB_ORIGINS`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
-3. Deploy. The deployment build runs `pnpm install && pnpm build && pnpm db:migrate`; the run command is `pnpm start`, which serves the API at `/api`, the Sandbox at `/sandbox`, and the web app for every other path.
-4. Check `GET /api/health` → `{"data":{"ok":true,"ai":…}}`.
+`railway.json` and `.node-version` (Node 22) are included, so Railway needs no extra build settings.
 
-The server refuses to start with an invalid configuration and prints exactly which variable is wrong.
+1. In Railway: **New Project → Deploy from GitHub repo** and pick this repository. One service runs everything.
+2. **Settings → Networking → Generate Domain** to get a public URL. `PUBLIC_API_URL` and `WEB_ORIGINS` default to it automatically (`RAILWAY_PUBLIC_DOMAIN`); set them explicitly only for a custom domain.
+3. **Variables** — add these (Railway exposes them at build time too, which the web build needs for `VITE_*`):
+   - `NODE_ENV=production`
+   - `DATABASE_URL` (Supabase *session* connection string) and `DATABASE_SSL=true`
+   - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+   - `DOWNLOAD_SIGNING_SECRET` (`openssl rand -hex 32`)
+   - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+   - optional: `AI_PROVIDER` + `OPENAI_API_KEY` / `OPENROUTER_API_KEY`, `EXTENSION_ORIGINS`, `VITE_EXTENSION_ID`, `AUTO_SUBMIT_PLATFORMS`
+4. Deploy. Railway runs `pnpm install && pnpm build`, then `pnpm db:migrate` as the pre-deploy step (applies any new migrations before traffic switches), then `pnpm start`. `PORT` is supplied by Railway.
+5. The deploy is healthy when `GET /api/health` returns `{"data":{"ok":true,…}}` (Railway's health check uses this path).
+
+The server refuses to start with an invalid configuration and prints exactly which variable is wrong (see **Deploy Logs**).
 
 ### AI (optional)
 Set `AI_PROVIDER=openai` + `OPENAI_API_KEY`, or `AI_PROVIDER=openrouter` + `OPENROUTER_API_KEY` (optionally `AI_MODEL`). Without it, ApplyFlux uses rule-based resume extraction and asks the person for open-ended answers; the UI says so.

@@ -21,7 +21,7 @@ export default async function globalSetup() {
     env: { ...process.env, APPLYFLUX_API_URL: E2E.api, APPLYFLUX_WEB_URL: 'http://127.0.0.1:5173' },
     stdio: 'inherit',
   });
-  // Web app served by the API (single origin), as on Replit. Supabase URL is a placeholder: tests inject a session.
+  // Web app served by the API (single origin), as in production. Supabase URL is a placeholder: tests inject a session.
   execSync('npx vite build', {
     cwd: resolve(root, 'apps/web'),
     env: { ...process.env, VITE_SUPABASE_URL: 'http://127.0.0.1:54321', VITE_SUPABASE_ANON_KEY: 'e2e-anon', VITE_API_URL: '' },

@@ -80,7 +80,7 @@ export function createApp(ctx: AppContext, opts: { webDist?: string } = {}) {
   app.use('/api', authed);
   app.use('/api', (_req, _res, next) => next(new AppError('NOT_FOUND', 'No such endpoint')));
 
-  // Serve the built web app (single-origin deployment, e.g. Replit).
+  // Serve the built web app (single-origin deployment).
   const dist = opts.webDist;
   if (dist && existsSync(join(dist, 'index.html'))) {
     app.use(express.static(dist, { index: false, maxAge: '1h' }));

@@ -58,6 +58,9 @@ const Env = z
 export type Config = z.infer<typeof Env>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  // On Railway, default the public URL and web origin to the service's generated domain.
+  const railway = env.RAILWAY_PUBLIC_DOMAIN ? `https://${env.RAILWAY_PUBLIC_DOMAIN}` : undefined;
+  if (railway) env = { ...env, PUBLIC_API_URL: env.PUBLIC_API_URL || railway, WEB_ORIGINS: env.WEB_ORIGINS || railway };
   const parsed = Env.safeParse(env);
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => `  - ${i.path.join('.') || 'env'}: ${i.message}`).join('\n');
