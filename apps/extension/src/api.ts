@@ -26,11 +26,11 @@ export class ApiError extends Error {
 }
 
 /** Authenticated call to the ApplyFlux extension API. The token never leaves chrome.storage.local and this module. */
-export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
   const { apiBase, token } = await getStored();
   if (!token) throw new ApiError(401, 'UNAUTHENTICATED', 'Extension not connected');
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 30_000);
+  const timer = setTimeout(() => ctrl.abort(), init.timeoutMs ?? 30_000);
   try {
     const res = await fetch(`${apiBase.replace(/\/$/, '')}/api/ext${path}`, {
       method: init.method ?? (init.body ? 'POST' : 'GET'),

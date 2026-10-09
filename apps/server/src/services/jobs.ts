@@ -62,9 +62,16 @@ export async function upsertJob(q: Queryable, userId: string, j: JobInsert): Pro
 
 export async function upsertSourcedJobs(q: Queryable, userId: string, sourceId: string, jobs: SourcedJob[]) {
   let created = 0;
+  let skipped = 0;
   for (const j of jobs) {
-    const r = await upsertJob(q, userId, { origin: 'source', sourceId, ...j });
-    if (r.created) created++;
+    // One malformed posting must not abort the whole sync.
+    try {
+      const r = await upsertJob(q, userId, { origin: 'source', sourceId, ...j });
+      if (r.created) created++;
+    } catch (e) {
+      skipped++;
+      console.warn(JSON.stringify({ level: 'warn', msg: 'skipped sourced job', sourceId, url: j.url, message: e instanceof Error ? e.message : String(e) }));
+    }
   }
   // Postings that vanished from the board are expired (source data permits it).
   const keys = jobs.map((j) => urlKey(j.url)).filter(Boolean);
@@ -73,7 +80,7 @@ export async function upsertSourcedJobs(q: Queryable, userId: string, sourceId: 
       where user_id=$1 and source_id=$2 and liveness <> 'expired' and not (url_key = any($3::text[])) returning id`,
     [userId, sourceId, keys],
   );
-  return { created, total: jobs.length, expired: expired.rowCount ?? 0 };
+  return { created, skipped, total: jobs.length, expired: expired.rowCount ?? 0 };
 }
 
 export function matchProfileFrom(p: FullCandidateProfile): MatchProfile {

@@ -11,6 +11,10 @@ export function createPool(config: Config): pg.Pool {
     ssl: config.DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
     max: 10,
     idleTimeoutMillis: 30_000,
+    // Fail fast instead of hanging when the database or its pooler is unreachable or saturated.
+    // Client-side query timeout: works through Supabase's pooler, which may drop startup parameters.
+    connectionTimeoutMillis: 10_000,
+    query_timeout: 30_000,
   });
   pool.on('error', (e) => console.error(JSON.stringify({ level: 'error', msg: 'pg pool error', message: e.message })));
   return pool;

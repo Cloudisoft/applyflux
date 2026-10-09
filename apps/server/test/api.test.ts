@@ -177,6 +177,28 @@ describe('job discovery & matching', () => {
     expect(s.status).toBe(502);
     expect(s.body.error.message).toMatch(/not found/);
   });
+
+  it('rounds fractional salaries so one posting cannot fail a sync', async () => {
+    const u = await createUser(env, 'disc3@example.com');
+    const src = await u.post('/api/sources', { kind: 'lever', identifier: 'hourly' });
+    env.setBoards({
+      'https://api.lever.co/v0/postings/hourly?mode=json': {
+        status: 200,
+        json: [{ id: 'a1', hostedUrl: 'https://jobs.lever.co/hourly/a1', text: 'Support Engineer', categories: { location: 'Remote' }, salaryRange: { min: 52.5, max: 61.25, currency: 'USD' } }],
+      },
+    });
+    const s = await u.post(`/api/sources/${src.body.data.id}/sync`);
+    expect(s.body.data).toMatchObject({ created: 1, skipped: 0, total: 1 });
+  });
+});
+
+describe('error handling', () => {
+  it('answers malformed JSON with 400, not 500', async () => {
+    const u = await createUser(env, 'json@example.com');
+    const r = await request(env.app).patch('/api/profile').set('authorization', `Bearer ${u.token}`).set('content-type', 'application/json').send('{"firstName":');
+    expect(r.status).toBe(400);
+    expect(r.body.error.code).toBe('BAD_REQUEST');
+  });
 });
 
 describe('answer engine', () => {

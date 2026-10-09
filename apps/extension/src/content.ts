@@ -103,7 +103,11 @@ async function fillCurrentStep(ctx: RunContext, engine: EngineContext): Promise<
   if (challengeBlocking(pass.challenge)) return fillCurrentStep(ctx, engine);
   if (!pass.formFound) return pass;
   if (pass.pendingQuestions.length) {
-    const answers = await send<ResolvedAnswer[]>({ type: 'af:answers', applicationId: ctx.applicationId, questions: questionsPayload(pass.pendingQuestions) }).catch(() => [] as ResolvedAnswer[]);
+    const answers = await send<ResolvedAnswer[]>({ type: 'af:answers', applicationId: ctx.applicationId, questions: questionsPayload(pass.pendingQuestions) }).catch((e) => {
+      // The questions stay unanswered and go to the person; keep the cause visible for support.
+      console.warn('[ApplyFlux] answer drafting failed', (e as Error).message);
+      return [] as ResolvedAnswer[];
+    });
     engine.resolved = { ...(engine.resolved ?? {}), ...Object.fromEntries(answers.map((a) => [a.key, a])) };
     pass = await runPass(document, engine);
     if ((await handleBlockers(ctx, pass)) === 'stop') return null;
@@ -256,6 +260,7 @@ function watchManualSubmit(ctx: RunContext) {
 function onMessage(msg: { type?: string; ctx?: RunContext }, sender: chrome.runtime.MessageSender) {
   if (sender.id !== chrome.runtime.id) return;
   if (msg?.type === 'af:pause') state.paused = true;
+  if (msg?.type === 'af:resume') state.paused = false;
   if (msg?.type === 'af:stop') state.stopped = true;
   if (msg?.type === 'af:run' && msg.ctx) {
     // Exactly one run at a time per page, however many times we are injected.

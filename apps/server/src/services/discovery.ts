@@ -151,8 +151,8 @@ export async function fetchBoard(kind: SourceKind, identifier: string, companyNa
         workplaceType: workplace(location, null, j.workplaceType),
         employmentType: employment(cats.commitment),
         description: typeof j.descriptionPlain === 'string' ? `${j.descriptionPlain}\n\n${(j.lists ?? []).map((l: any) => `${l.text}\n${htmlToText(l.content)}`).join('\n\n')}`.trim() : null,
-        salaryMin: typeof sr?.min === 'number' ? sr.min : null,
-        salaryMax: typeof sr?.max === 'number' ? sr.max : null,
+        salaryMin: typeof sr?.min === 'number' ? Math.round(sr.min) : null,
+        salaryMax: typeof sr?.max === 'number' ? Math.round(sr.max) : null,
         salaryCurrency: typeof sr?.currency === 'string' ? sr.currency.slice(0, 3) : null,
         postedAt: iso(j.createdAt),
       };
@@ -177,8 +177,8 @@ export async function fetchBoard(kind: SourceKind, identifier: string, companyNa
         workplaceType: workplace(location, j.isRemote, j.workplaceType),
         employmentType: employment(j.employmentType),
         description: typeof j.descriptionPlain === 'string' ? j.descriptionPlain : htmlToText(j.descriptionHtml) || null,
-        salaryMin: typeof comp?.minValue === 'number' ? comp.minValue : null,
-        salaryMax: typeof comp?.maxValue === 'number' ? comp.maxValue : null,
+        salaryMin: typeof comp?.minValue === 'number' ? Math.round(comp.minValue) : null,
+        salaryMax: typeof comp?.maxValue === 'number' ? Math.round(comp.maxValue) : null,
         salaryCurrency: typeof comp?.currencyCode === 'string' ? comp.currencyCode : null,
         postedAt: iso(j.publishedAt),
       };

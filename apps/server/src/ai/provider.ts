@@ -60,6 +60,8 @@ function anthropicProvider(config: Config, fetchImpl: typeof fetch): Provider {
           fallbacks: 'default',
         });
       } catch (e) {
+        // Log the cause (never the prompt: it holds personal data) so failures are visible in the server logs.
+        console.error(JSON.stringify({ level: 'error', msg: 'Anthropic request failed', status: e instanceof Anthropic.APIError ? e.status : undefined, message: e instanceof Error ? e.message.slice(0, 500) : String(e) }));
         if (e instanceof Anthropic.AuthenticationError) throw new AppError('AI_FAILED', 'Anthropic rejected the API key');
         if (e instanceof Anthropic.RateLimitError) throw new AppError('AI_FAILED', 'Anthropic rate limit reached');
         if (e instanceof Anthropic.APIError) throw new AppError('AI_FAILED', `Anthropic returned ${e.status ?? 'an error'}`);

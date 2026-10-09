@@ -91,13 +91,16 @@ export async function deleteDocument(db: Db, storage: StorageDriver, userId: str
     [userId, id],
   );
   if (!rows.length) throw notFound('Document');
-  await storage.remove(rows.map((r) => r.storage_path));
   if (rows.some((r) => r.is_default)) {
     await db.query(
       `update documents set is_default=true where id = (select id from documents where user_id=$1 and kind='resume' order by created_at desc limit 1)`,
       [userId],
     );
   }
+  // The records are already gone; a storage hiccup only leaves orphaned files, so log it rather than fail the request.
+  await storage.remove(rows.map((r) => r.storage_path)).catch((e) =>
+    console.error(JSON.stringify({ level: 'error', msg: 'document file removal failed', userId, paths: rows.length, message: e instanceof Error ? e.message : String(e) })),
+  );
 }
 
 /* ------------------------------------------------------------------ */

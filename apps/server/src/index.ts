@@ -31,10 +31,17 @@ const server = app.listen(config.PORT, () => {
 });
 
 // Recovery loop: reclaim applications whose browser stopped reporting.
+// Passes never overlap: if one is slow (e.g. the database is struggling) the next waits for it.
+let sweeping = false;
 const sweeper = setInterval(() => {
+  if (sweeping) return;
+  sweeping = true;
   sweepExpiredLeases(db)
     .then((n) => n && console.log(JSON.stringify({ level: 'info', msg: 'recovered stale applications', count: n })))
-    .catch((e) => console.error(JSON.stringify({ level: 'error', msg: 'sweeper failed', message: e.message })));
+    .catch((e) => console.error(JSON.stringify({ level: 'error', msg: 'sweeper failed', message: e.message })))
+    .finally(() => {
+      sweeping = false;
+    });
 }, 30_000);
 
 function shutdown() {
@@ -44,3 +51,13 @@ function shutdown() {
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+
+// Last-resort logging: anything reaching here is a bug. Log it so it shows in Railway, then restart cleanly.
+process.on('unhandledRejection', (e) => {
+  console.error(JSON.stringify({ level: 'error', msg: 'unhandled rejection', message: e instanceof Error ? e.message : String(e), stack: e instanceof Error ? e.stack : undefined }));
+  shutdown();
+});
+process.on('uncaughtException', (e) => {
+  console.error(JSON.stringify({ level: 'error', msg: 'uncaught exception', message: e.message, stack: e.stack }));
+  shutdown();
+});

@@ -85,6 +85,8 @@ async function superviseActive(active: Active) {
       await chrome.tabs.sendMessage(active.tabId, { type: 'af:pause' }).catch(() => {});
       return;
     }
+    // Clears a pause after the person resumes the run (no-op otherwise).
+    await chrome.tabs.sendMessage(active.tabId, { type: 'af:resume' }).catch(() => {});
     if (hb.submitApproved && !active.submitApproved) {
       active.submitApproved = true;
       active.phase = 'filling';
@@ -205,7 +207,7 @@ async function handleContent(msg: ContentToBackground, sender: chrome.runtime.Me
   if (msg.type === 'af:ready') return { ok: true };
   if (!active || sender.tab?.id !== active.tabId || msg.applicationId !== active.applicationId) throw new Error('Not the active application tab');
 
-  if (msg.type === 'af:answers') return api('/answers', { body: { applicationId: msg.applicationId, questions: msg.questions } });
+  if (msg.type === 'af:answers') return api('/answers', { body: { applicationId: msg.applicationId, questions: msg.questions }, timeoutMs: 180_000 }); // AI drafting can take a while
   if (msg.type === 'af:phase') {
     active.phase = msg.phase;
     await setActive(active);

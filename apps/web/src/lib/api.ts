@@ -18,21 +18,30 @@ async function token() {
   return data.session?.access_token ?? null;
 }
 
-export async function apiFetch<T>(path: string, init: { method?: string; body?: unknown; form?: FormData; raw?: boolean } = {}): Promise<T> {
+export async function apiFetch<T>(path: string, init: { method?: string; body?: unknown; form?: FormData; raw?: boolean } = {}, retried = false): Promise<T> {
   const t = await token();
   const headers: Record<string, string> = {};
   if (t) headers.authorization = `Bearer ${t}`;
   if (init.body !== undefined) headers['content-type'] = 'application/json';
-  const res = await fetch(`${BASE}/api${path}`, {
-    method: init.method ?? (init.body !== undefined || init.form ? 'POST' : 'GET'),
-    headers,
-    body: init.form ?? (init.body !== undefined ? JSON.stringify(init.body) : undefined),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/api${path}`, {
+      method: init.method ?? (init.body !== undefined || init.form ? 'POST' : 'GET'),
+      headers,
+      body: init.form ?? (init.body !== undefined ? JSON.stringify(init.body) : undefined),
+    });
+  } catch {
+    throw new ApiError(0, 'NETWORK', "Can't reach ApplyFlux. Check your connection and try again.");
+  }
   if (init.raw && res.ok) return res as unknown as T;
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     const e = json?.error ?? {};
-    if (res.status === 401 && t) await supabase.auth.refreshSession().catch(() => {});
+    // An expired access token: refresh once and repeat the request.
+    if (res.status === 401 && t && !retried) {
+      const { data } = await supabase.auth.refreshSession().catch(() => ({ data: { session: null } }));
+      if (data.session) return apiFetch<T>(path, init, true);
+    }
     throw new ApiError(res.status, e.code ?? 'HTTP_' + res.status, e.message ?? `Request failed (${res.status})`, e.details);
   }
   return (json?.data ?? json) as T;

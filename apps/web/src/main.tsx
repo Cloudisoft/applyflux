@@ -20,6 +20,7 @@ import { ProfilePage } from '@/pages/app/Profile';
 import { ParseReview, ResumeLibrary } from '@/pages/app/Resumes';
 import { CoverLetterStudio, ResumeStudio } from '@/pages/app/Studio';
 import { AccountPage, AnswersPage, AutomationSettings, ExtensionPage, NotificationsPage } from '@/pages/app/Settings';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SetupWizard } from '@/pages/app/Setup';
 
 const queryClient = new QueryClient({
@@ -50,6 +51,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <AuthProvider>
         <TooltipProvider>
           <BrowserRouter>
+            <ErrorBoundary>
             <Routes>
               <Route element={<PublicLayout />}>
                 <Route index element={<Landing />} />
@@ -82,6 +84,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
+            </ErrorBoundary>
           </BrowserRouter>
           <Toaster richColors closeButton position="top-right" />
         </TooltipProvider>
