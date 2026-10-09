@@ -2,13 +2,13 @@ import * as React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Bell, CheckCircle2, Copy, Download, Lock, MessageSquareText, Plus, Puzzle, ShieldAlert, ShieldCheck, Trash2, TriangleAlert } from 'lucide-react';
 import { AUTO_SUBMIT_CONSENT_VERSION } from '@applyflux/shared';
-import { Badge, Button, Card, CardHeader, ConfirmDialog, Dialog, EmptyState, ErrorState, Field, Input, PageHeader, Progress, Select, Skeleton, Switch, TagInput, Tabs, TabsList, TabsTrigger, Textarea, buttonVariants } from '@/components/ui';
+import { Badge, Button, Card, CardHeader, ConfirmDialog, Dialog, EmptyState, ErrorState, Field, Input, PageHeader, Select, Skeleton, Switch, TagInput, Tabs, TabsList, TabsTrigger, Textarea, buttonVariants } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { EXTENSION_STORE_URL, extensionConfigured, pairExtension, pingExtension } from '@/lib/extension';
-import { qk, useAction, useAnswers, useAutomation, useConnections, useDocuments, useNotifications, usePlans, useUsage } from '@/lib/queries';
+import { qk, useAction, useAnswers, useAutomation, useConnections, useDocuments, useNotifications } from '@/lib/queries';
 import type { AutomationPrefs, SavedAnswer } from '@/lib/types';
-import { cn, formatDate, money, timeAgo } from '@/lib/utils';
+import { cn, formatDate, timeAgo } from '@/lib/utils';
 import { toast } from 'sonner';
 
 /* Saved answers --------------------------------------------------------------- */
@@ -156,11 +156,9 @@ export function AutomationSettings() {
               ['assisted', 'Assisted', 'Automate supported steps; pause for anything missing, ambiguous or that needs confirmation.'],
               ['auto', 'Auto', 'Submit eligible applications on validated platforms with your authorisation.'],
             ] as const).map(([v, l, d]) => {
-              const locked = v === 'auto' && !data.plan.auto_mode_allowed;
               return (
-                <button key={v} type="button" disabled={locked} onClick={() => setP({ ...p, mode: v })} aria-pressed={p.mode === v} className={cn('rounded-2xl border p-4 text-left transition disabled:opacity-50', p.mode === v ? 'border-brand/60 bg-brand-soft/60 ring-2 ring-brand/20' : 'border-line hover:border-brand/30')}>
+                <button key={v} type="button" onClick={() => setP({ ...p, mode: v })} aria-pressed={p.mode === v} className={cn('rounded-2xl border p-4 text-left transition disabled:opacity-50', p.mode === v ? 'border-brand/60 bg-brand-soft/60 ring-2 ring-brand/20' : 'border-line hover:border-brand/30')}>
                   <div className="font-semibold">{l} Mode</div><p className="mt-1 text-sm text-muted">{d}</p>
-                  {locked && <Badge tone="neutral" className="mt-2">Not in {data.plan.name} plan</Badge>}
                 </button>
               );
             })}
@@ -179,8 +177,8 @@ export function AutomationSettings() {
         <Card>
           <CardHeader title="Limits & filters" />
           <div className="grid gap-5 p-5 sm:grid-cols-2">
-            <Field label={`Daily application limit (plan max ${data.plan.daily_application_limit})`} htmlFor="as-daily"><Input id="as-daily" type="number" min={1} max={data.plan.daily_application_limit} value={p.dailyLimit} onChange={(e) => setP({ ...p, dailyLimit: Number(e.target.value) })} /></Field>
-            <Field label={`Applications at once (plan max ${data.plan.max_concurrency})`} htmlFor="as-conc"><Input id="as-conc" type="number" min={1} max={data.plan.max_concurrency} value={p.maxConcurrency} onChange={(e) => setP({ ...p, maxConcurrency: Number(e.target.value) })} /></Field>
+            <Field label="Daily application limit" htmlFor="as-daily"><Input id="as-daily" type="number" min={1} max={200} value={p.dailyLimit} onChange={(e) => setP({ ...p, dailyLimit: Number(e.target.value) })} /></Field>
+            <Field label="Applications at once" htmlFor="as-conc"><Input id="as-conc" type="number" min={1} max={5} value={p.maxConcurrency} onChange={(e) => setP({ ...p, maxConcurrency: Number(e.target.value) })} /></Field>
             <Field label={`Minimum match score: ${p.minMatchScore}`} htmlFor="as-score" hint="Used to suggest jobs for your queue."><input id="as-score" type="range" min={0} max={100} step={5} value={p.minMatchScore} onChange={(e) => setP({ ...p, minMatchScore: Number(e.target.value) })} className="w-full accent-[rgb(var(--brand))]" /></Field>
             <Field label="Default resume" htmlFor="as-resume"><Select id="as-resume" value={p.defaultResumeId ?? ''} onChange={(e) => setP({ ...p, defaultResumeId: e.target.value || null })}><option value="">Library default</option>{docs?.map((d) => <option key={d.id} value={d.id}>{d.title} (v{d.version})</option>)}</Select></Field>
             <Field label="Cover letters" htmlFor="as-cl"><Select id="as-cl" value={p.coverLetterPolicy} onChange={(e) => setP({ ...p, coverLetterPolicy: e.target.value as AutomationPrefs['coverLetterPolicy'] })}><option value="when_requested">Attach an approved letter for the job when the form asks</option><option value="always">Always attach the approved letter for the job</option><option value="never">Never attach cover letters</option></Select></Field>
@@ -197,38 +195,6 @@ export function AutomationSettings() {
         <p className="rounded-xl border border-line bg-elevated p-4 text-sm leading-relaxed">{data.consent.text}</p>
         <label className="mt-4 flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-[rgb(var(--brand))]" checked={agree} onChange={(e) => setAgree(e.target.checked)} /> I have read and agree to the above.</label>
       </Dialog>
-    </div>
-  );
-}
-
-/* Billing ------------------------------------------------------------------------- */
-
-export function BillingPage() {
-  const { data: u, isLoading } = useUsage();
-  const { data: plans } = usePlans();
-  if (isLoading || !u) return <Skeleton className="h-80 rounded-3xl" />;
-  const a = u.applications;
-  return (
-    <div>
-      <PageHeader eyebrow="Settings" title="Subscription & usage" description={`Your current plan is ${u.plan.name}. Usage resets on the 1st of each month.`} />
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="p-5"><div className="text-sm text-muted">Applications this month</div><div className="mt-2 font-display text-3xl font-bold">{a.usedThisMonth}<span className="text-lg text-muted"> / {a.monthlyLimit}</span></div><Progress className="mt-3" value={(a.usedThisMonth / Math.max(1, a.monthlyLimit)) * 100} label="Monthly applications" />{a.reserved > 0 && <div className="mt-2 text-xs text-muted">{a.reserved} in progress (reserved)</div>}</Card>
-        <Card className="p-5"><div className="text-sm text-muted">Today</div><div className="mt-2 font-display text-3xl font-bold">{a.usedToday}<span className="text-lg text-muted"> / {a.dailyLimit}</span></div><Progress className="mt-3" value={(a.usedToday / Math.max(1, a.dailyLimit)) * 100} label="Daily applications" /></Card>
-        <Card className="p-5"><div className="text-sm text-muted">AI drafts this month</div><div className="mt-2 font-display text-3xl font-bold">{u.ai.usedThisMonth}<span className="text-lg text-muted"> / {u.ai.monthlyLimit}</span></div><Progress className="mt-3" value={(u.ai.usedThisMonth / Math.max(1, u.ai.monthlyLimit)) * 100} label="AI drafts" /></Card>
-      </div>
-      <Card className="mt-6 p-5 text-sm text-muted"><b className="text-ink">How usage is counted:</b> an application counts only when ApplyFlux submits it (confirmed or unverified). Failed, skipped and cancelled attempts, and applications you complete yourself, are never counted. Retries can never be charged twice.</Card>
-      <h2 className="mb-4 mt-10 text-xl font-bold">Plans</h2>
-      <div className="grid gap-4 md:grid-cols-2">
-        {plans?.map((p) => (
-          <Card key={p.id} className={cn('p-6', p.id === u.plan.id && 'ring-2 ring-brand/40')}>
-            <div className="flex items-center justify-between"><h3 className="text-lg font-bold">{p.name}</h3>{p.id === u.plan.id && <Badge tone="info">Current plan</Badge>}</div>
-            <p className="mt-1 text-sm text-muted">{p.description}</p>
-            <div className="mt-4 font-display text-2xl font-bold">{p.price_cents == null ? <span className="text-base text-muted">Pricing not yet published</span> : `${money(p.price_cents / 100, p.currency)}/${p.billing_interval}`}</div>
-            <ul className="mt-4 space-y-1.5 text-sm"><li>{p.monthly_application_limit} applications / month · {p.daily_application_limit}/day</li><li>{p.max_concurrency} at once · {p.monthly_ai_generations} AI drafts</li><li>{p.auto_mode_allowed ? 'Auto Mode included' : 'Review & Assisted modes'}</li></ul>
-            {p.id !== u.plan.id && <p className="mt-4 rounded-xl bg-elevated p-3 text-xs text-muted">Plan changes are handled by your ApplyFlux administrator — online checkout isn't enabled on this deployment.</p>}
-          </Card>
-        ))}
-      </div>
     </div>
   );
 }

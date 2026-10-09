@@ -39,12 +39,12 @@ beforeAll(async () => {
 afterAll(() => env.close());
 
 describe('new-user bootstrap trigger', () => {
-  it('creates profile, preferences and a free subscription', async () => {
+  it('creates profile and preferences', async () => {
     const r = await env.ctx.db.query(
-      `select (select count(*) from profiles where user_id=$1) p, (select count(*) from automation_preferences where user_id=$1) ap, (select plan_id from subscriptions where user_id=$1) plan`,
+      `select (select count(*) from profiles where user_id=$1) p, (select count(*) from automation_preferences where user_id=$1) ap`,
       [a.id],
     );
-    expect(r.rows[0]).toMatchObject({ p: '1', ap: '1', plan: 'free' });
+    expect(r.rows[0]).toMatchObject({ p: '1', ap: '1' });
   });
 });
 
@@ -55,8 +55,7 @@ describe('row level security', () => {
     expect((await asUser(b.id, 'select * from jobs')).rowCount).toBe(0);
     expect((await asUser(b.id, 'select * from candidate_profiles')).rows.map((r) => r.user_id)).toEqual([b.id]);
   });
-  it('anonymous users can read public plans and nothing personal', async () => {
-    expect((await asUser(null, 'select * from plans')).rowCount).toBeGreaterThan(0);
+  it('anonymous users can read nothing personal', async () => {
     await expect(asUser(null, 'select * from candidate_profiles')).resolves.toMatchObject({ rowCount: 0 });
   });
   it('users cannot write applications, usage or consent directly', async () => {

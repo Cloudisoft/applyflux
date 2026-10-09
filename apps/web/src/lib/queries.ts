@@ -14,7 +14,6 @@ import type {
   Me,
   Notification,
   Paginated,
-  Plan,
   Platform,
   ProfileResponse,
   SavedAnswer,
@@ -39,7 +38,6 @@ export const qk = {
   sources: ['sources'] as const,
   savedSearches: ['saved-searches'] as const,
   connections: ['ext-connections'] as const,
-  plans: ['plans'] as const,
   platforms: ['platforms'] as const,
 };
 
@@ -80,7 +78,6 @@ export const useSources = () => useQuery({ queryKey: qk.sources, queryFn: () => 
 export const useSavedSearches = () => useQuery({ queryKey: qk.savedSearches, queryFn: () => api.get<Array<{ id: string; name: string; query: Record<string, unknown> }>>('/saved-searches') });
 export const useConnections = () =>
   useQuery({ queryKey: qk.connections, queryFn: () => api.get<Array<{ id: string; name: string; extensionVersion: string | null; createdAt: string; lastSeenAt: string | null; expiresAt: string; revokedAt: string | null }>>('/extension/connections'), refetchInterval: 10_000 });
-export const usePlans = () => useQuery({ queryKey: qk.plans, queryFn: () => api.get<Plan[]>('/public/plans'), staleTime: 300_000 });
 export const usePlatforms = () => useQuery({ queryKey: qk.platforms, queryFn: () => api.get<Platform[]>('/public/platforms'), staleTime: 300_000 });
 
 /** Mutation with toast feedback and cache invalidation. */

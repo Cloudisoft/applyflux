@@ -126,7 +126,7 @@ function AutomationStep({ onNext }: { onNext: () => void }) {
           {a?.unverified.filter((f) => !f.includes('.')).map((f) => <li key={f} className="flex items-center gap-2 text-warning"><CircleAlert className="h-4 w-4" /> Confirm: {f}</li>)}
           {a?.issues.filter((i) => i.severity === 'error').map((i, n) => <li key={n} className="flex items-center gap-2 text-danger"><CircleAlert className="h-4 w-4" /> {i.message}</li>)}
           {a?.readyForAutomation && <li className="flex items-center gap-2 text-success"><CheckCircle2 className="h-4 w-4" /> Your profile is ready for automation.</li>}
-          <li className="text-muted">Auto Mode also requires a plan that includes it and your explicit authorisation in Automation Settings.</li>
+          <li className="text-muted">Auto Mode also requires your explicit authorisation in Automation Settings.</li>
         </ul>
       </div>
       <div className="flex justify-end"><Button loading={save.isPending} onClick={() => save.mutate(undefined)}>Save & continue</Button></div>

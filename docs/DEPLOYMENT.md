@@ -14,9 +14,8 @@ ApplyFlux has three deployables, all built from this monorepo:
 2. Apply the migrations — either:
    - `supabase link --project-ref <ref> && supabase db push` (Supabase CLI), or
    - `DATABASE_URL=<connection string> DATABASE_SSL=true pnpm --filter @applyflux/server db:migrate` (no CLI needed; records applied files in `public.applyflux_migrations`).
-   The migrations create every table, RLS policy, the state-transition trigger, the `on_auth_user_created` bootstrap trigger, the private `documents` storage bucket and its policies, the plan catalogue, and add the queue tables to the `supabase_realtime` publication.
+   The migrations create every table, RLS policy, the state-transition trigger, the `on_auth_user_created` bootstrap trigger, the private `documents` storage bucket and its policies, and add the queue tables to the `supabase_realtime` publication.
 3. **Auth** → URL configuration: set Site URL to your web origin and add `https://<origin>/app/setup` and `https://<origin>/reset-password` to Redirect URLs. Enable "Confirm email" if you want email verification (the sign-up screen handles both cases).
-4. **Plans**: prices are `NULL` (shown as "Pricing not yet published"). Change limits or set prices with SQL, e.g. `update plans set price_cents = 1900, currency = 'USD' where id = 'pro';`. Move a user to a plan with `update subscriptions set plan_id = 'pro' where user_id = '…';` (no payment provider is integrated).
 
 ## 2. API + web app on Railway
 

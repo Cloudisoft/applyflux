@@ -6,7 +6,6 @@ import {
   Bot,
   Briefcase,
   ChevronDown,
-  CreditCard,
   FileText,
   LayoutDashboard,
   ListChecks,
@@ -61,7 +60,6 @@ const NAV: Array<{ group: string; items: Array<{ to: string; label: string; icon
     items: [
       { to: '/app/extension', label: 'Browser Extension', icon: Puzzle },
       { to: '/app/settings/automation', label: 'Automation Settings', icon: Settings },
-      { to: '/app/billing', label: 'Subscription & Usage', icon: CreditCard },
       { to: '/app/settings/account', label: 'Account & Privacy', icon: ShieldCheck },
     ],
   },
@@ -184,7 +182,6 @@ export function AppLayout() {
                 <Dropdown.Separator className="my-1 h-px bg-line" />
                 {[
                   { to: '/app/profile', label: 'Candidate profile', icon: User },
-                  { to: '/app/billing', label: 'Subscription & usage', icon: CreditCard },
                   { to: '/app/settings/account', label: 'Account & privacy', icon: ShieldCheck },
                   { to: '/app/notifications', label: 'Notifications', icon: Mail },
                 ].map((i) => (

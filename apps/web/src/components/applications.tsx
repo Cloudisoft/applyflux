@@ -100,7 +100,7 @@ export function ApplicationActions({ app, compact }: { app: Application; compact
         open={confirm === 'manual'}
         onOpenChange={(o) => !o && setConfirm(null)}
         title="Mark as applied manually"
-        description="Use this when you completed the application yourself. It's recorded as unverified until you confirm the employer received it, and it doesn't count toward your plan usage."
+        description="Use this when you completed the application yourself. It's recorded as unverified until you confirm the employer received it, and it doesn't count toward your daily limit."
         footer={
           <>
             <Button variant="secondary" onClick={() => setConfirm(null)}>

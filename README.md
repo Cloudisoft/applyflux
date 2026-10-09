@@ -10,7 +10,7 @@ apps/server     Express API (Node 20, TypeScript): REST, extension protocol, que
 apps/extension  ApplyFlux Agent: Chrome Manifest V3 service worker + content script + popup
 packages/shared       state machine, schemas, matching, question rules, profile assessment
 packages/form-engine  form detection/mapping/filling, CAPTCHA & sign-in detection, platform adapters, evidence
-supabase/migrations   schema, RLS, triggers, storage policies, plans
+supabase/migrations   schema, RLS, triggers, storage policies
 e2e                   Playwright suites (real Chromium + extension + API + Postgres)
 docs/                 ARCHITECTURE · DEPLOYMENT · EXTENSION_PROTOCOL · COMPATIBILITY · USAGE_POLICY · TESTING
 ```
@@ -67,7 +67,7 @@ The server validates its configuration at startup and refuses to run with unsafe
 - **Auto-submit is enabled only for the ApplyFlux Sandbox by default.** The Greenhouse and Lever adapters can auto-submit and are tested against representative markup. They read live pages correctly, but they have not submitted to a real employer. Enable them per deployment after validating (`AUTO_SUBMIT_PLATFORMS`).
 - **Workday, iCIMS, Ashby and generic career pages** support filling plus Review or Assisted mode only. Workday usually requires an account sign-in, which ApplyFlux hands to you.
 - **LinkedIn (including Easy Apply) is not automated**, because its User Agreement prohibits automated access. Such jobs are detected and tracked, and you apply manually.
-- **Billing:** no payment provider is integrated. Plans and limits are configurable data, prices are unpublished (`NULL`), and an administrator assigns plans.
+- **No plans or billing:** every account has the full feature set. Each person sets their own daily limit and concurrency (see `docs/USAGE_POLICY.md`).
 - **Live services not verified from this build environment:** Supabase Auth/Storage/Realtime and the Anthropic/OpenAI APIs. The code paths are implemented, and tests use a Postgres shim and an HTTP test double, so verify them on first deploy with real credentials.
 - **No official Cloudisoft logo** was available. The UI uses an ApplyFlux product mark and names Cloudisoft in text. Replace `apps/web/public/brand/` with official assets when available.
 - Scanned (image-only) PDFs aren't OCR'd. The user is asked for a text-based PDF or DOCX.

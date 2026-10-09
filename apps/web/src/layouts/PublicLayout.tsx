@@ -18,7 +18,6 @@ export function PublicLayout() {
               ['/#how', 'How it works'],
               ['/#features', 'Features'],
               ['/platforms', 'Platforms'],
-              ['/#pricing', 'Pricing'],
               ['/security', 'Security'],
               ['/#faq', 'FAQ'],
             ].map(([to, label]) => (
@@ -59,7 +58,6 @@ export function PublicLayout() {
             <ul className="mt-3 space-y-2 text-sm text-muted">
               <li><a href="/#features" className="hover:text-ink">Features</a></li>
               <li><NavLink to="/platforms" className="hover:text-ink">Supported platforms</NavLink></li>
-              <li><a href="/#pricing" className="hover:text-ink">Pricing</a></li>
             </ul>
           </div>
           <div>

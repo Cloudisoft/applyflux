@@ -19,7 +19,7 @@ import { AppError, notFound } from '../lib/errors';
 import { exclusionReason } from './jobs';
 import { audit, notify } from './notify';
 import { loadFullProfile } from './profile';
-import { canReserveApplication, chargeApplication, lockUser, planFor } from './usage';
+import { canReserveApplication, chargeApplication, lockUser } from './usage';
 
 type Actor = 'user' | 'extension' | 'system';
 
@@ -165,9 +165,7 @@ export async function startRun(db: Db, userId: string) {
     await lockUser(c, userId);
     const existing = await currentRun(c, userId);
     const prefs = (await one<Record<string, any>>(c, 'select * from automation_preferences where user_id=$1', [userId]))!;
-    const plan = await planFor(c, userId);
     if (prefs.mode === 'auto') {
-      if (!plan.auto_mode_allowed) throw new AppError('FORBIDDEN', `Auto Mode is not included in the ${plan.name} plan. Use Assisted or Review mode.`);
       if (!prefs.auto_submit_consent_at || prefs.auto_submit_consent_version !== AUTO_SUBMIT_CONSENT_VERSION)
         throw new AppError('CONSENT_REQUIRED', 'Auto Mode needs your explicit authorisation first (Automation Settings).');
       const profile = await loadFullProfile(c, userId);
@@ -235,11 +233,10 @@ export async function claimNext(db: Db, config: Config, userId: string, connecti
     const run = await currentRun(c, userId);
     if (!run || run.status !== 'running') return { idle: true as const, reason: run ? 'Automation is paused' : 'Automation is not running' };
     const prefs = (await one<Record<string, any>>(c, 'select * from automation_preferences where user_id=$1', [userId]))!;
-    const plan = await planFor(c, userId);
     const inFlight = await one<{ n: string }>(c, `select count(*) as n from applications where user_id=$1 and state='IN_PROGRESS'`, [userId]);
-    const concurrency = Math.min(prefs.max_concurrency, plan.max_concurrency);
+    const concurrency = prefs.max_concurrency;
     if (Number(inFlight!.n) >= concurrency) return { idle: true as const, reason: `Concurrency limit (${concurrency}) reached` };
-    const quota = await canReserveApplication(c, userId, prefs.daily_limit);
+    const quota = await canReserveApplication(c, userId);
     if (!quota.ok) {
       await c.query(`update automation_runs set status='paused', paused_at=now() where id=$1`, [run.id]);
       await notify(c, userId, { type: 'quota', title: 'Automation paused', body: quota.reason, severity: 'warning' });
@@ -299,7 +296,7 @@ export async function claimNext(db: Db, config: Config, userId: string, connecti
     const consented = !!prefs.auto_submit_consent_at && prefs.auto_submit_consent_version === AUTO_SUBMIT_CONSENT_VERSION;
     const allowSubmit =
       !!next.submit_approved_at ||
-      (prefs.mode === 'auto' && consented && plan.auto_mode_allowed && autoSubmitPlatforms(config).has(platform) && assessProfile(profile).readyForAutomation);
+      (prefs.mode === 'auto' && consented && autoSubmitPlatforms(config).has(platform) && assessProfile(profile).readyForAutomation);
 
     const base = config.PUBLIC_API_URL.replace(/\/$/, '');
     return {

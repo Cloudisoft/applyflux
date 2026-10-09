@@ -1,16 +1,14 @@
-import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 import { SavedAnswerInput, classifyQuestion, computeMatch, extractSkills, isSensitive, matchesAnyVariant, questionKey } from '@applyflux/shared';
 import type { AppContext } from '../context';
-import { camel, many, one, tx } from '../db';
+import { camel, many, one } from '../db';
 import { AppError, ah, notFound } from '../lib/errors';
 import type { AuthedRequest } from '../lib/auth';
 import { coverLetterPrompt, tailoringPrompt } from '../ai/prompts';
 import { groundingIssues } from '../ai/grounding';
 import { factSheet, loadFullProfile } from '../services/profile';
 import { matchProfileFrom } from '../services/jobs';
-import { chargeAi } from '../services/usage';
 import { renderPdf, storeDocument } from '../services/documents';
 
 export function contentRoutes(ctx: AppContext) {
@@ -90,14 +88,13 @@ export function contentRoutes(ctx: AppContext) {
   r.post(
     '/cover-letters/generate',
     ah<AuthedRequest>(async (req, res) => {
-      const b = z.object({ jobId: z.string().uuid(), length: z.enum(['concise', 'detailed']).default('concise'), idempotencyKey: z.string().max(80).optional() }).parse(req.body);
+      const b = z.object({ jobId: z.string().uuid(), length: z.enum(['concise', 'detailed']).default('concise') }).parse(req.body);
       const job = await one<{ title: string; company: string; description: string | null }>(ctx.db, 'select title, company, description from jobs where id=$1 and user_id=$2', [b.jobId, req.user.id]);
       if (!job) throw notFound('Job');
       if (!ctx.ai.configured) throw new AppError('AI_NOT_CONFIGURED', 'AI is not configured on this server. Write the cover letter manually.');
       const profile = await loadFullProfile(ctx.db, req.user.id);
       const name = [profile.profile.firstName, profile.profile.lastName].filter(Boolean).join(' ');
       if (!name || !profile.experiences.length) throw new AppError('PROFILE_INCOMPLETE', 'Add your name and work history before generating a cover letter');
-      await tx(ctx.db, (c) => chargeAi(c, req.user.id, b.idempotencyKey ?? `cover:${randomUUID()}`));
       const facts = factSheet(profile);
       const text = (await ctx.ai.text(coverLetterPrompt(facts, job, b.length, name), { maxTokens: 900, temperature: 0.4 })).trim();
       const warnings = groundingIssues(text, facts);
@@ -198,7 +195,6 @@ export function contentRoutes(ctx: AppContext) {
       const profile = await loadFullProfile(ctx.db, req.user.id);
       const verified = { ...profile, experiences: profile.experiences };
       const facts = factSheet(verified);
-      await tx(ctx.db, (c) => chargeAi(c, req.user.id, `tailor:${id}`));
       const out = await ctx.ai.json<{ headline: string; summary: string; experiences: Array<{ index: number; bullets: string[] }>; skillsOrder: string[] }>(
         tailoringPrompt(facts, job!, t.analysis.missing ?? []),
         { maxTokens: 2500 },

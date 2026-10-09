@@ -94,7 +94,7 @@ export function accountRoutes(ctx: AppContext) {
       await ctx.storage.remove(docs.map((d) => d.storage_path));
       await tx(ctx.db, async (c) => {
         await audit(c, uid, 'account.deleted');
-        for (const t of ['application_events', 'applications', 'notifications', 'usage_ledger', 'job_matches', 'jobs', 'job_sources', 'saved_searches', 'cover_letters', 'resume_tailorings', 'resume_parses', 'documents', 'saved_answers', 'work_experiences', 'educations', 'certifications', 'projects', 'automation_runs', 'extension_connections', 'extension_pairing_codes', 'automation_preferences', 'candidate_profiles', 'subscriptions', 'profiles'])
+        for (const t of ['application_events', 'applications', 'notifications', 'usage_ledger', 'job_matches', 'jobs', 'job_sources', 'saved_searches', 'cover_letters', 'resume_tailorings', 'resume_parses', 'documents', 'saved_answers', 'work_experiences', 'educations', 'certifications', 'projects', 'automation_runs', 'extension_connections', 'extension_pairing_codes', 'automation_preferences', 'candidate_profiles', 'profiles'])
           await c.query(`delete from ${t} where user_id=$1`, [uid]);
       });
       if (ctx.supabaseAdmin) {

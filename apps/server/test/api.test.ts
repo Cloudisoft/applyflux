@@ -282,10 +282,8 @@ describe('privacy', () => {
     expect(Number(left.rows[0].n)).toBe(0);
   });
 
-  it('public endpoints expose plans and an honest platform matrix', async () => {
-    const plans = (await request(env.app).get('/api/public/plans')).body.data;
-    expect(plans.map((p: { id: string }) => p.id)).toEqual(['free', 'pro']);
-    expect(plans[0].price_cents).toBeNull();
+  it('public endpoints expose an honest platform matrix and no plans', async () => {
+    expect((await request(env.app).get('/api/public/plans')).status).not.toBe(200);
     const platforms = (await request(env.app).get('/api/public/platforms')).body.data;
     const li = platforms.find((p: { id: string }) => p.id === 'linkedin');
     expect(li).toMatchObject({ autofill: false, autoSubmit: false, testStatus: 'manual_only' });

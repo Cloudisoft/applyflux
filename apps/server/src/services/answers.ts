@@ -8,13 +8,11 @@ import {
   type AnswerRequest,
   type ResolvedAnswer,
 } from '@applyflux/shared';
-import { randomUUID } from 'node:crypto';
 import type { AiClient } from '../ai/provider';
 import { answerPrompt } from '../ai/prompts';
 import { groundingIssues } from '../ai/grounding';
-import { many, one, tx, type Db } from '../db';
+import { many, one, type Db } from '../db';
 import { factSheet, loadFullProfile } from './profile';
-import { chargeAi } from './usage';
 
 /**
  * Resolution order per question:
@@ -66,7 +64,6 @@ export async function resolveAnswers(db: Db, ai: AiClient, userId: string, req: 
 
   if (forAi.length && ai.configured && job) {
     try {
-      await tx(db, (c) => chargeAi(c, userId, `answers:${req.applicationId}:${randomUUID()}`));
       const facts = factSheet(profile);
       const res = await ai.json<{ answers: Array<{ key: string; answer: string | null; supported: boolean; confidence: number }> }>(answerPrompt(facts, job, forAi), { maxTokens: 2000 });
       for (const q of forAi) {

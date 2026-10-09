@@ -103,26 +103,8 @@ export interface Application {
   events?: Array<{ id: number; type: string; fromState: string | null; toState: string | null; actor: string; message: string | null; createdAt: string }>;
 }
 
-export interface Plan {
-  id: string;
-  name: string;
-  description: string | null;
-  price_cents: number | null;
-  currency: string | null;
-  billing_interval: string | null;
-  monthly_application_limit: number;
-  daily_application_limit: number;
-  max_concurrency: number;
-  monthly_ai_generations: number;
-  auto_mode_allowed: boolean;
-  features: string[];
-}
-
 export interface Usage {
-  plan: Plan;
-  applications: { usedThisMonth: number; usedToday: number; reserved: number; monthlyLimit: number; dailyLimit: number };
-  ai: { usedThisMonth: number; monthlyLimit: number };
-  periodStart: string;
+  applications: { usedToday: number; reserved: number; dailyLimit: number };
 }
 
 export interface Run {
@@ -170,7 +152,6 @@ export interface AutomationState {
   run: Run | null;
   runCounts: Partial<Record<ApplicationState, number>>;
   active: Application[];
-  plan: Plan;
   consent: { text: string; version: string };
   autoSubmitPlatforms: string[];
 }

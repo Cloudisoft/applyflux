@@ -85,7 +85,7 @@ describe('queue lifecycle', () => {
     const dup = await ext.post(`/api/ext/applications/${id}/report`, { type: 'submission_result', data: evidenceOk(task.job.url) });
     expect(dup.status).toBe(409); // lease released after completion
     const usage = (await u.get('/api/usage')).body.data;
-    expect(usage.applications.usedThisMonth).toBe(1);
+    expect(usage.applications.usedToday).toBe(1);
     expect(usage.applications.reserved).toBe(0);
 
     const detail = (await u.get(`/api/applications/${id}`)).body.data;
@@ -166,7 +166,6 @@ describe('human verification (CAPTCHA) flow', () => {
 describe('recovery and duplicate-submission safety', () => {
   it('requeues a lost executor before submit, but never after a submit click', async () => {
     const { u, ext, jobs } = await setup('r1@example.com');
-    await env.ctx.db.query(`update subscriptions set plan_id='pro' where user_id=$1`, [u.id]); // pro allows 2 concurrent
     await u.put('/api/automation/preferences', { mode: 'assisted', dailyLimit: 5, maxConcurrency: 2, minMatchScore: 0, excludedCompanies: [], excludedKeywords: [] });
     await u.post('/api/applications/enqueue', { jobIds: [jobs[0], jobs[1]] });
     await u.post('/api/automation/start');
@@ -226,25 +225,20 @@ describe('quota enforcement', () => {
   it('concurrent claims cannot exceed the daily limit', async () => {
     const { u, ext, jobs } = await setup('l1@example.com');
     await u.put('/api/automation/preferences', { mode: 'assisted', dailyLimit: 1, maxConcurrency: 1, minMatchScore: 0, excludedCompanies: [], excludedKeywords: [] });
-    await env.ctx.db.query(`update plans set max_concurrency = 5 where id='free'`);
     await env.ctx.db.query(`update automation_preferences set max_concurrency = 5 where user_id=$1`, [u.id]);
     await u.post('/api/applications/enqueue', { jobIds: jobs });
     await u.post('/api/automation/start');
     const results = await Promise.all([1, 2, 3, 4, 5].map(() => ext.post('/api/ext/next')));
     const claimed = results.filter((r) => r.body.data.applicationId);
     expect(claimed).toHaveLength(1);
-    await env.ctx.db.query(`update plans set max_concurrency = 1 where id='free'`);
   });
 });
 
 describe('auto mode safeguards', () => {
-  it('requires plan support and explicit consent, then allows submit only on enabled platforms', async () => {
+  it('requires explicit consent, then allows submit only on enabled platforms', async () => {
     const u = await createUser(env, 'm1@example.com');
     await completeProfile(u);
     await pairExtension(env, u);
-    const r1 = await u.put('/api/automation/preferences', { mode: 'auto', dailyLimit: 5, maxConcurrency: 1, minMatchScore: 0, excludedCompanies: [], excludedKeywords: [] });
-    expect(r1.status).toBe(403); // free plan has no Auto Mode
-    await env.ctx.db.query(`update subscriptions set plan_id='pro' where user_id=$1`, [u.id]);
     await u.put('/api/automation/preferences', { mode: 'auto', dailyLimit: 5, maxConcurrency: 1, minMatchScore: 0, excludedCompanies: [], excludedKeywords: [] });
     const r2 = await u.post('/api/automation/start');
     expect(r2.body.error.code).toBe('CONSENT_REQUIRED');

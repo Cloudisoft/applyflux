@@ -20,7 +20,7 @@ export function DashboardPage() {
   const d = data;
   const run = d?.run?.status;
   const u = d?.usage.applications;
-  const remaining = u ? Math.max(0, u.monthlyLimit - u.usedThisMonth - u.reserved) : 0;
+  const remaining = u ? Math.max(0, u.dailyLimit - u.usedToday - u.reserved) : 0;
   const name = me?.account.displayName?.split(' ')[0];
 
   return (
@@ -117,18 +117,18 @@ export function DashboardPage() {
 
           <Card className="p-5">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Plan usage</h3>
-              <Link to="/app/billing" className="text-xs font-semibold text-brand-ink hover:underline">
-                {d?.usage.plan.name ?? ''}
+              <h3 className="font-semibold">Today</h3>
+              <Link to="/app/settings/automation" className="text-xs font-semibold text-brand-ink hover:underline">
+                Change limit
               </Link>
             </div>
             <div className="mt-3 flex items-baseline gap-1">
               <span className="font-display text-2xl font-bold">{remaining}</span>
-              <span className="text-sm text-muted">applications left this month</span>
+              <span className="text-sm text-muted">applications left today</span>
             </div>
-            <Progress value={u ? ((u.usedThisMonth + u.reserved) / Math.max(1, u.monthlyLimit)) * 100 : 0} className="mt-3" label="Monthly usage" />
+            <Progress value={u ? ((u.usedToday + u.reserved) / Math.max(1, u.dailyLimit)) * 100 : 0} className="mt-3" label="Daily usage" />
             <div className="mt-2 text-xs text-muted">
-              {u?.usedToday ?? 0} of {u?.dailyLimit ?? 0} used today · {d?.usage.ai.usedThisMonth ?? 0}/{d?.usage.ai.monthlyLimit ?? 0} AI drafts
+              {u?.usedToday ?? 0} of {u?.dailyLimit ?? 0} used today{u?.reserved ? ` · ${u.reserved} in progress` : ''}
             </div>
           </Card>
 

@@ -26,7 +26,7 @@ packages/form-engine  DOM detection → mapping → filling, CAPTCHA/auth detect
 - **Submission verification**: the extension reports evidence (final URL, confirmation text, form still present, visible errors). The server judges it (`judgeEvidence`) — `SUBMITTED` needs a confirmation signal with the form gone; anything weaker is `SUBMISSION_UNVERIFIED`; visible errors are `NEEDS_ATTENTION`. A `SUBMITTED` row without evidence is rejected by a check constraint.
 - **Human verification**: a CAPTCHA moves only that application to `AWAITING_HUMAN_VERIFICATION` (others continue), preserves `step_state`, focuses the tab and notifies. Resolution requires evidence (provider token present, no challenge visible). Bounded: the 4th challenge → `NEEDS_ATTENTION`; 30 minutes without completion → `NEEDS_ATTENTION`.
 - **Recovery**: the sweeper re-queues expired leases before a submit click (bounded attempts) and sends anything after a submit click to `NEEDS_ATTENTION` with an explanation — never an automatic retry.
-- **Quota**: reserved at claim under a per-user advisory lock (concurrency-safe), charged once per application via a unique ledger key, released on failure/skip/stop. See `USAGE_POLICY.md`.
+- **Daily limit** (the person's own setting): reserved at claim under a per-user advisory lock (concurrency-safe), charged once per application via a unique ledger key, released on failure/skip/stop. See `USAGE_POLICY.md`.
 - **Answers**: saved approved answer → deterministic answer from verified profile facts → (non-sensitive only) grounded AI draft checked for unsupported numbers/credentials. Work authorisation, sponsorship, citizenship, demographics, disability, veteran, criminal history and legal consent are never AI-answered.
 - **Untrusted content**: job descriptions and form labels are wrapped as data in prompts; the extension validates every message with zod and accepts only pairing from web pages.
 
@@ -34,7 +34,7 @@ packages/form-engine  DOM detection → mapping → filling, CAPTCHA/auth detect
 
 | Path | Purpose |
 |---|---|
-| `supabase/migrations` | Schema, RLS, state trigger, storage, plans, execution controls |
+| `supabase/migrations` | Schema, RLS, state trigger, storage, execution controls |
 | `packages/shared` | Types, zod schemas, state machine, match scoring, question classification, profile assessment, normalisation, liveness |
 | `packages/form-engine` | Field detection, mapping, filling, file attachment, CAPTCHA/sign-in detection, confirmation evidence, platform adapters |
 | `apps/server` | REST API, extension protocol, queue workflow, resume parsing (PDF/DOCX/TXT/RTF), discovery, AI, sandbox, migrations runner |

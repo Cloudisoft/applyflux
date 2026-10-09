@@ -37,7 +37,6 @@ async function newUser(email: string): Promise<Api> {
     .sign(new TextEncoder().encode(E2E.jwtSecret));
   const api = apiFor(token);
   await api.get('/me');
-  await db.query(`update subscriptions set plan_id='pro' where user_id=$1`, [r.rows[0].id]);
   // Verified profile (the person confirmed these facts in the UI).
   await api.patch('/profile', {
     firstName: 'Ada', lastName: 'Lovelace', phone: '+44 20 7946 0000', city: 'London', country: 'United Kingdom',
@@ -138,7 +137,7 @@ test('Auto Mode: fills, attaches resume, submits once, verifies confirmation', a
   const types = done.events.map((e: { type: string }) => e.type);
   expect(types).toEqual(expect.arrayContaining(['claimed', 'submit_attempted', 'submitted']));
   const usage = await api.get('/usage');
-  expect(usage.applications.usedThisMonth).toBe(1);
+  expect(usage.applications.usedToday).toBe(1);
   await api.post('/automation/stop');
 });
 

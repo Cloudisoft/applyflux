@@ -19,7 +19,7 @@ import { JobDetail, JobDiscovery } from '@/pages/app/Jobs';
 import { ProfilePage } from '@/pages/app/Profile';
 import { ParseReview, ResumeLibrary } from '@/pages/app/Resumes';
 import { CoverLetterStudio, ResumeStudio } from '@/pages/app/Studio';
-import { AccountPage, AnswersPage, AutomationSettings, BillingPage, ExtensionPage, NotificationsPage } from '@/pages/app/Settings';
+import { AccountPage, AnswersPage, AutomationSettings, ExtensionPage, NotificationsPage } from '@/pages/app/Settings';
 import { SetupWizard } from '@/pages/app/Setup';
 
 const queryClient = new QueryClient({
@@ -76,7 +76,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 <Route path="answers" element={<AnswersPage />} />
                 <Route path="extension" element={<ExtensionPage />} />
                 <Route path="settings/automation" element={<AutomationSettings />} />
-                <Route path="billing" element={<BillingPage />} />
                 <Route path="settings/account" element={<AccountPage />} />
                 <Route path="notifications" element={<NotificationsPage />} />
                 <Route path="*" element={<NotFound />} />

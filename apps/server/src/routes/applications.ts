@@ -14,7 +14,7 @@ import type { AuthedRequest } from '../lib/auth';
 import { currentRun, enqueueJobs, pauseRun, startRun, stopRun, userAction } from '../services/queue';
 import { audit } from '../services/notify';
 import { loadFullProfile } from '../services/profile';
-import { planFor, usageSummary } from '../services/usage';
+import { usageSummary } from '../services/usage';
 
 const ACTION = z.discriminatedUnion('action', [
   z.object({ action: z.literal('retry') }),
@@ -170,7 +170,6 @@ export function applicationRoutes(ctx: AppContext) {
       const prefs = await one(ctx.db, 'select * from automation_preferences where user_id=$1', [req.user.id]);
       const run = await currentRun(ctx.db, req.user.id);
       const active = await many(ctx.db, `${APP_SELECT} where a.user_id=$1 and a.state in ('IN_PROGRESS','AWAITING_HUMAN_VERIFICATION','AWAITING_REVIEW') order by a.state_changed_at`, [req.user.id]);
-      const plan = await planFor(ctx.db, req.user.id);
       const runCounts = run
         ? await many<{ state: string; n: number }>(ctx.db, `select state, count(*)::int as n from applications where run_id=$1 group by state`, [run.id])
         : [];
@@ -180,7 +179,6 @@ export function applicationRoutes(ctx: AppContext) {
           run: run ? camel(run) : null,
           runCounts: Object.fromEntries(runCounts.map((c) => [c.state, c.n])),
           active: active.map((x) => camel(x)),
-          plan,
           consent: { text: AUTO_SUBMIT_CONSENT_TEXT, version: AUTO_SUBMIT_CONSENT_VERSION },
           autoSubmitPlatforms: ctx.config.AUTO_SUBMIT_PLATFORMS.split(',').map((s) => s.trim()),
         },
@@ -192,13 +190,11 @@ export function applicationRoutes(ctx: AppContext) {
     '/automation/preferences',
     ah<AuthedRequest>(async (req, res) => {
       const p = AutomationPreferencesInput.parse(req.body);
-      const plan = await planFor(ctx.db, req.user.id);
-      if (p.mode === 'auto' && !plan.auto_mode_allowed) throw new AppError('FORBIDDEN', `Auto Mode is not included in the ${plan.name} plan`);
       if (p.defaultResumeId && !(await one(ctx.db, `select 1 from documents where id=$1 and user_id=$2 and kind='resume'`, [p.defaultResumeId, req.user.id]))) throw notFound('Resume');
       await ctx.db.query(
         `update automation_preferences set mode=$2, daily_limit=$3, max_concurrency=$4, min_match_score=$5, excluded_companies=$6, excluded_keywords=$7,
            require_sponsorship_friendly=$8, notify_browser=$9, default_resume_id=$10, cover_letter_policy=$11 where user_id=$1`,
-        [req.user.id, p.mode, Math.min(p.dailyLimit, plan.daily_application_limit), Math.min(p.maxConcurrency, plan.max_concurrency), p.minMatchScore, p.excludedCompanies, p.excludedKeywords, p.requireSponsorshipFriendly, p.notifyBrowser, p.defaultResumeId ?? null, p.coverLetterPolicy],
+        [req.user.id, p.mode, p.dailyLimit, p.maxConcurrency, p.minMatchScore, p.excludedCompanies, p.excludedKeywords, p.requireSponsorshipFriendly, p.notifyBrowser, p.defaultResumeId ?? null, p.coverLetterPolicy],
       );
       await audit(ctx.db, req.user.id, 'automation.preferences', undefined, { mode: p.mode });
       res.json({ data: camel(await one(ctx.db, 'select * from automation_preferences where user_id=$1', [req.user.id])) });

@@ -69,7 +69,6 @@ export async function ensureProfileRows(q: Queryable, userId: string, email: str
     [userId, email, JSON.stringify(email ? { email: { source: 'user', verified: true } } : {})],
   );
   await q.query(`insert into automation_preferences (user_id) values ($1) on conflict do nothing`, [userId]);
-  await q.query(`insert into subscriptions (user_id, plan_id) select $1, 'free' where exists (select 1 from plans where id='free') on conflict do nothing`, [userId]);
 }
 
 export async function loadFullProfile(q: Queryable, userId: string): Promise<FullCandidateProfile & { version: number }> {

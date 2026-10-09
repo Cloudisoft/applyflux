@@ -21,8 +21,8 @@ import {
   Wand2,
 } from 'lucide-react';
 import { buttonVariants, Card, Badge, Skeleton } from '@/components/ui';
-import { usePlans, usePlatforms } from '@/lib/queries';
-import { cn, money } from '@/lib/utils';
+import { usePlatforms } from '@/lib/queries';
+import { cn } from '@/lib/utils';
 import { STATE_LABELS } from '@applyflux/shared';
 
 function Section({ id, eyebrow, title, intro, children, className }: { id?: string; eyebrow: string; title: React.ReactNode; intro?: React.ReactNode; children: React.ReactNode; className?: string }) {
@@ -111,12 +111,11 @@ const FAQ = [
   ['Will it make things up on my applications?', 'No. Answers come from facts you have verified in your profile and answers you have approved. Questions about work authorisation, sponsorship, demographics and similar topics are never answered by AI — they need your saved answer. AI drafts for open-ended questions are checked for unsupported claims and flagged for your review.'],
   ['Which sites does it work on?', 'See the Platforms page for the honest compatibility matrix. Greenhouse, Lever, Ashby, Workday and iCIMS forms are supported for filling; automatic submission is enabled per platform only after it has been validated. LinkedIn is not automated because its terms prohibit it — ApplyFlux tracks those applications and you apply manually.'],
   ['What do Review, Assisted and Auto modes mean?', 'Review fills the form and leaves it for you to inspect and submit. Assisted automates supported steps and pauses for anything missing, ambiguous or that needs confirmation. Auto submits eligible applications on supported platforms after you have given explicit authorisation and verified your profile.'],
-  ['How do you count my usage?', 'An application counts only when ApplyFlux actually submits it. Failed, skipped and cancelled attempts are never charged, and retries can never charge twice.'],
+  ['How do daily limits work?', 'You set your own daily limit and how many applications run at once. Only applications ApplyFlux actually submits count toward it; failed, skipped and cancelled attempts never do.'],
   ['Can I export or delete my data?', 'Yes. Account & Privacy lets you download everything as JSON and permanently delete your account, documents and history.'],
 ];
 
 export function Landing() {
-  const { data: plans, isLoading: plansLoading } = usePlans();
   const { data: platforms } = usePlatforms();
   const [open, setOpen] = React.useState<number | null>(0);
   return (
@@ -144,7 +143,6 @@ export function Landing() {
               See how it works
             </a>
           </div>
-          <p className="mt-4 text-xs text-muted">No credit card needed for the Starter plan.</p>
         </div>
         <HeroPreview />
       </section>
@@ -263,35 +261,6 @@ export function Landing() {
               <h3 className="mt-4 font-bold">{s.t}</h3>
               <p className="mt-2 text-sm text-muted">{s.d}</p>
             </div>
-          ))}
-        </div>
-      </Section>
-
-      {/* Pricing */}
-      <Section id="pricing" eyebrow="Pricing" title="Plans" intro="Limits shown are the plans configured on this ApplyFlux deployment." className="bg-surface">
-        <div className="mx-auto grid max-w-4xl gap-5 md:grid-cols-2">
-          {plansLoading && [0, 1].map((i) => <Skeleton key={i} className="h-80 rounded-3xl" />)}
-          {(plans ?? []).map((p, i) => (
-            <Card key={p.id} className={cn('flex flex-col p-7', i === 1 && 'ring-2 ring-brand/40')}>
-              <div className="flex items-center justify-between">
-                <h3 className="text-xl font-bold">{p.name}</h3>
-                {p.auto_mode_allowed && <Badge tone="info">Auto Mode</Badge>}
-              </div>
-              <p className="mt-2 text-sm text-muted">{p.description}</p>
-              <div className="mt-5 font-display text-3xl font-extrabold">
-                {p.price_cents == null ? <span className="text-xl text-muted">Pricing not yet published</span> : <>{money(p.price_cents / 100, p.currency)}<span className="text-base font-medium text-muted">/{p.billing_interval}</span></>}
-              </div>
-              <ul className="mt-6 flex-1 space-y-2.5 text-sm">
-                <li className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-success" /> {p.monthly_application_limit} applications / month ({p.daily_application_limit}/day)</li>
-                <li className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-success" /> {p.monthly_ai_generations} AI drafts / month</li>
-                {p.features.map((f) => (
-                  <li key={f} className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-success" /> {f}</li>
-                ))}
-              </ul>
-              <Link to="/signup" className={cn(buttonVariants({ variant: i === 1 ? 'primary' : 'secondary' }), 'mt-7')}>
-                Get started
-              </Link>
-            </Card>
           ))}
         </div>
       </Section>

@@ -80,11 +80,10 @@ async function shot(page: Page, name: string) {
   await page.screenshot({ path: resolve(SHOTS, `${name}.png`), fullPage: true });
 }
 
-test('public site renders with real plan and platform data', async () => {
+test('public site renders with real platform data', async () => {
   const { page, errors } = await newPage();
   await page.goto(`${E2E.api}/`);
   await expect(page.getByRole('heading', { level: 1 })).toContainText('One profile. Every opportunity.');
-  await expect(page.getByText('Pricing not yet published').first()).toBeVisible();
   await expect(page.getByText('Greenhouse').first()).toBeVisible();
   await shot(page, '01-landing');
   await page.goto(`${E2E.api}/platforms`);
@@ -122,7 +121,6 @@ test('authenticated app screens render from the API', async () => {
   await visit('/app/answers', '21-answers', 'Saved answers');
   await visit('/app/extension', '22-extension', 'Connect the ApplyFlux Agent');
   await visit('/app/settings/automation', '23-automation-settings', 'Execution mode');
-  await visit('/app/billing', '24-billing', 'Subscription & usage');
   await visit('/app/notifications', '25-notifications', 'Human verification required');
   await visit('/app/settings/account', '26-account', 'Export my data');
   await visit('/app/setup', '27-setup', 'Setup · step');

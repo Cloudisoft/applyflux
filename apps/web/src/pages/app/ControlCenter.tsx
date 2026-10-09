@@ -124,11 +124,11 @@ export function ControlCenter() {
           <CardHeader title="Limits" action={<Link to="/app/settings/automation" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>Edit</Link>} />
           <dl className="divide-y divide-line text-sm">
             {[
-              ['Daily limit', data ? `${Math.min(data.preferences.dailyLimit, data.plan.daily_application_limit)} (plan max ${data.plan.daily_application_limit})` : '—'],
+              ['Daily limit', data ? `${data.preferences.dailyLimit}` : '—'],
               ['Used today', `${usage?.applications.usedToday ?? 0}`],
-              ['Concurrency', data ? `${Math.min(data.preferences.maxConcurrency, data.plan.max_concurrency)} (plan max ${data.plan.max_concurrency})` : '—'],
+              ['Concurrency', data ? `${data.preferences.maxConcurrency}` : '—'],
               ['Minimum match score', `${data?.preferences.minMatchScore ?? '—'}`],
-              ['Monthly remaining', usage ? `${Math.max(0, usage.applications.monthlyLimit - usage.applications.usedThisMonth - usage.applications.reserved)} of ${usage.applications.monthlyLimit}` : '—'],
+              ['In progress', `${usage?.applications.reserved ?? 0}`],
               ['Auto-submit platforms', data?.autoSubmitPlatforms.join(', ') ?? '—'],
             ].map(([k, v]) => (
               <div key={k} className="flex items-center justify-between gap-3 px-5 py-3">
