@@ -102,13 +102,18 @@ function openAiCompatibleProvider(config: Config, id: 'openai' | 'openrouter', f
           headers: { 'content-type': 'application/json', authorization: `Bearer ${key}`, ...(isOpenRouter ? { 'x-title': 'ApplyFlux' } : {}) },
           body: JSON.stringify({
             model,
-            messages,
+            // JSON mode requires the word "JSON" in the messages; add the same instruction Claude gets.
+            messages: json ? [{ role: 'system', content: JSON_INSTRUCTION }, ...messages] : messages,
             temperature: opts.temperature ?? 0.2,
             max_tokens: opts.maxTokens ?? 1200,
             ...(json ? { response_format: { type: 'json_object' } } : {}),
           }),
         });
-        if (!res.ok) throw new AppError('AI_FAILED', `${isOpenRouter ? 'OpenRouter' : 'OpenAI'} returned ${res.status}`);
+        if (!res.ok) {
+          const detail = await res.text().catch(() => '');
+          console.error(JSON.stringify({ level: 'error', msg: `${id} request failed`, status: res.status, message: detail.slice(0, 500) }));
+          throw new AppError('AI_FAILED', `${isOpenRouter ? 'OpenRouter' : 'OpenAI'} returned ${res.status}`);
+        }
         const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
         const content = data.choices?.[0]?.message?.content;
         if (!content) throw new AppError('AI_FAILED', 'AI provider returned no content');
