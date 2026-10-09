@@ -1,0 +1,45 @@
+<!doctype html><html><head><title>Acme - Product Designer</title></head><body>
+<div class="application-page">
+<form id="application-form" action="/acme/abc-123/apply" method="POST" enctype="multipart/form-data">
+ <h4>Submit your application</h4>
+ <ul>
+  <li class="application-question resume"><div class="application-label">Resume/CV <span class="required">✱</span></div>
+   <div class="application-field"><input class="application-file-input" id="resume-upload-input" name="resume" type="file"></div></li>
+  <li class="application-question"><div class="application-label">Full name<span class="required">✱</span></div>
+   <div class="application-field"><input type="text" name="name" required></div></li>
+  <li class="application-question"><div class="application-label">Email<span class="required">✱</span></div>
+   <div class="application-field"><input name="email" type="email" required></div></li>
+  <li class="application-question"><div class="application-label">Phone</div>
+   <div class="application-field"><input type="text" name="phone"></div></li>
+  <li class="application-question"><div class="application-label">Current location<span class="required">✱</span></div>
+   <div class="application-field"><input class="location-input" type="text" maxlength="100" name="location" required></div></li>
+  <li class="application-question"><div class="application-label">Current company</div>
+   <div class="application-field"><input type="text" name="org"></div></li>
+ </ul>
+ <h4>Links</h4>
+ <ul>
+  <li class="application-question"><div class="application-label">LinkedIn URL</div><div class="application-field"><input type="text" name="urls[LinkedIn]"></div></li>
+  <li class="application-question"><div class="application-label">GitHub URL</div><div class="application-field"><input type="text" name="urls[GitHub]"></div></li>
+ </ul>
+ <ul>
+  <li class="application-question custom-question">
+   <div class="application-label">Language Skill(s) (Check all that apply)<span class="required">✱</span></div>
+   <div class="application-field"><ul data-qa="checkboxes">
+     <li><label><input type="checkbox" name="cards[c1][field0]" value="English (ENG)" required /><span class="application-answer-alternative">English (ENG)</span></label></li>
+     <li><label><input type="checkbox" name="cards[c1][field0]" value="Spanish (SPA)" required /><span class="application-answer-alternative">Spanish (SPA)</span></label></li>
+     <li><label><input type="checkbox" name="cards[c1][field0]" value="French (FRA)" required /><span class="application-answer-alternative">French (FRA)</span></label></li>
+   </ul></div>
+  </li>
+  <li class="application-question custom-question">
+   <div class="application-label">Are you legally authorized to work in the United States?<span class="required">✱</span></div>
+   <div class="application-field"><ul data-qa="multiple-choice">
+     <li><label><input type="radio" name="cards[c1][field1]" value="Yes" required /><span>Yes</span></label></li>
+     <li><label><input type="radio" name="cards[c1][field1]" value="No" required /><span>No</span></label></li>
+   </ul></div>
+  </li>
+ </ul>
+ <li class="application-question"><div class="application-label">Additional information</div>
+  <div class="application-field"><textarea name="comments" placeholder="Add a cover letter or anything else you want to share."></textarea></div></li>
+ <button type="submit" id="btn-submit" data-qa="btn-submit">Submit application</button>
+</form>
+</div></body></html>

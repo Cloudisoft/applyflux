@@ -1,0 +1,59 @@
+<!doctype html><html><head><title>Job Application for Senior Engineer at Acme</title></head><body>
+<main>
+<div class="application--header"><h2>Apply for this job</h2></div>
+<form method="get" action="/acme/jobs/123" id="application-form" class="application--form">
+ <div class="application--questions">
+  <div class="field-wrapper"><div class="input-wrapper">
+   <label id="first_name-label" for="first_name" class="label">First Name<span aria-hidden="true">*</span></label>
+   <input id="first_name" aria-label="First Name" aria-required="true" type="text" maxlength="255" autocomplete="given-name" value=""/>
+  </div></div>
+  <div class="field-wrapper"><div class="input-wrapper">
+   <label id="last_name-label" for="last_name" class="label">Last Name<span aria-hidden="true">*</span></label>
+   <input id="last_name" aria-label="Last Name" aria-required="true" type="text" maxlength="255" autocomplete="family-name" value=""/>
+  </div></div>
+  <div class="field-wrapper"><div class="input-wrapper">
+   <label for="email" class="label">Email<span aria-hidden="true">*</span></label>
+   <input id="email" aria-label="Email" aria-required="true" type="text" maxlength="255" autocomplete="email" value=""/>
+  </div></div>
+  <fieldset class="phone-input"><legend class="visually-hidden">Phone</legend>
+   <div class="select"><label id="country-label" for="country" class="label select__label">Country</label>
+     <input class="select__input" id="country" type="text" aria-autocomplete="list" aria-labelledby="country-label" aria-required="false" role="combobox" aria-controls="country-listbox" value=""/>
+     <div id="country-listbox" role="listbox"></div>
+     <input required="" tabindex="-1" aria-hidden="true" class="requiredInput" value=""/>
+   </div>
+   <label for="phone" class="label">Phone</label>
+   <input id="phone" aria-label="Phone" aria-required="false" type="tel" maxlength="255"/>
+  </fieldset>
+  <div class="field-wrapper">
+   <div role="group" aria-labelledby="upload-label-resume" aria-required="true" class="file-upload">
+    <div id="upload-label-resume" class="label upload-label">Resume/CV<span class="required">*</span></div>
+    <button type="button" class="btn">Attach</button>
+    <label class="visually-hidden" for="resume">Attach</label>
+    <input id="resume" class="visually-hidden" type="file" accept=".pdf,.doc,.docx,.txt,.rtf"/>
+   </div>
+  </div>
+  <div class="field-wrapper">
+   <div role="group" aria-labelledby="upload-label-cover_letter" aria-required="false" class="file-upload">
+    <div id="upload-label-cover_letter" class="label upload-label">Cover Letter</div>
+    <label class="visually-hidden" for="cover_letter">Attach</label>
+    <input id="cover_letter" class="visually-hidden" type="file" accept=".pdf,.doc,.docx,.txt,.rtf"/>
+   </div>
+  </div>
+  <div class="field-wrapper"><label for="question_1" class="label">LinkedIn Profile</label>
+   <input id="question_1" aria-label="LinkedIn Profile" aria-required="false" type="text" maxlength="255" value=""/></div>
+  <div class="field-wrapper"><label for="question_2" class="label">Why do you want to work at Acme?<span aria-hidden="true">*</span></label>
+   <textarea id="question_2" aria-required="true"></textarea></div>
+  <div class="field-wrapper"><div class="select">
+   <label id="question_3-label" for="question_3" class="label select__label">Will you now or in the future require visa sponsorship to work in the United Kingdom?<span aria-hidden="true">*</span></label>
+   <input class="select__input" id="question_3" type="text" aria-autocomplete="list" aria-labelledby="question_3-label" aria-required="true" role="combobox" aria-controls="question_3-listbox" value=""/>
+   <div id="question_3-listbox" role="listbox"></div>
+  </div></div>
+  <div class="field-wrapper"><div class="select">
+   <label id="gender-label" for="gender" class="label select__label">Gender</label>
+   <input class="select__input" id="gender" type="text" aria-autocomplete="list" aria-labelledby="gender-label" aria-required="false" role="combobox" aria-controls="gender-listbox" value=""/>
+   <div id="gender-listbox" role="listbox"></div>
+  </div></div>
+ </div>
+ <div class="application--submit"><button type="submit" class="btn btn--pill">Submit application</button></div>
+</form>
+</main></body></html>

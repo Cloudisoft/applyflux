@@ -26,12 +26,16 @@ export function formatPhoneForField(raw: string, pattern?: string | null, maxLen
   return raw.trim();
 }
 
+export type DateFormat = 'iso' | 'month' | 'slash_month' | 'us' | 'eu' | 'year';
+
 /** Converts a YYYY / YYYY-MM / YYYY-MM-DD value into the format an input expects. */
-export function formatDateForField(value: string, format: 'iso' | 'month' | 'us' | 'eu' | 'year' = 'iso'): string {
+export function formatDateForField(value: string, format: DateFormat = 'iso'): string {
   const [y, m = '01', d = '01'] = value.split('-');
   switch (format) {
     case 'month':
       return `${y}-${m}`;
+    case 'slash_month':
+      return `${m}/${y}`;
     case 'us':
       return `${m}/${d}/${y}`;
     case 'eu':
@@ -44,14 +48,15 @@ export function formatDateForField(value: string, format: 'iso' | 'month' | 'us'
 }
 
 /** Infer a date format from an input's type / placeholder. */
-export function inferDateFormat(type: string, placeholder: string): 'iso' | 'month' | 'us' | 'eu' | 'year' {
+export function inferDateFormat(type: string, placeholder: string): DateFormat {
   if (type === 'month') return 'month';
   if (type === 'date') return 'iso';
   const p = placeholder.toLowerCase();
   if (/mm\s*\/\s*dd\s*\/\s*yyyy/.test(p)) return 'us';
   if (/dd\s*\/\s*mm\s*\/\s*yyyy/.test(p)) return 'eu';
   if (/^yyyy$/.test(p.trim())) return 'year';
-  if (/mm\s*\/\s*yyyy|yyyy-mm$/.test(p)) return 'month';
+  if (/^mm\s*\/\s*yyyy$/.test(p.trim())) return 'slash_month';
+  if (/yyyy-mm$/.test(p)) return 'month';
   return 'iso';
 }
 
