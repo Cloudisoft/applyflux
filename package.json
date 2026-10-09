@@ -2,19 +2,19 @@
   "name": "applyflux",
   "private": true,
   "version": "0.1.0",
-  "description": "ApplyFlux by Cloudisoft — AI-powered job application automation",
+  "description": "ApplyFlux by Cloudisoft \u2014 AI-powered job application automation",
   "packageManager": "pnpm@10.28.0",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "dev": "pnpm -r --parallel --filter @applyflux/server --filter @applyflux/web dev",
-    "build": "pnpm -r build",
+    "build": "pnpm --filter @applyflux/web build && pnpm --filter @applyflux/server build && pnpm --filter @applyflux/extension build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
+    "test": "pnpm -r --filter=!@applyflux/e2e test",
     "test:e2e": "playwright test -c e2e/playwright.config.ts",
-    "db:migrate": "pnpm --filter @applyflux/server db:migrate",
-    "start": "pnpm --filter @applyflux/server start"
+    "db:migrate": "node apps/server/dist/migrate.js",
+    "start": "node apps/server/dist/index.js"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1",

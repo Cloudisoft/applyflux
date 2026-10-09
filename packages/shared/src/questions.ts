@@ -15,7 +15,7 @@ export function questionKey(question: string): string {
 
 const RULES: Array<{ category: QuestionCategory; re: RegExp }> = [
   { category: 'sponsorship', re: /sponsor|h-?1b|visa status|immigration (support|status)/i },
-  { category: 'work_authorization', re: /(legally )?(authori[sz]ed|eligible|permitted|right) to work|work (permit|authori[sz]ation)|employment eligibility/i },
+  { category: 'work_authorization', re: /(legally )?(authori[sz]ed|eligible|permitted|right) to work|work (permit|authori[sz]ation)|employment eligibility|citizen|permanent resident|nationality|green card|security clearance/i },
   { category: 'criminal_history', re: /convicted|criminal|felony|background check/i },
   { category: 'veteran', re: /veteran|military service|armed forces/i },
   { category: 'disability', re: /disabilit/i },
@@ -135,6 +135,13 @@ export function answerFromProfile(
   const category = classifyQuestion(question);
   const verified = new Set(profile.verifiedKeys);
   const none = (reason: string): ProfileAnswer => ({ answer: null, confidence: 0, needsUser: true, reason });
+
+  if (/country of residence|current country|where do you (currently )?(live|reside)|country (are you )?(currently )?(based|located) in/i.test(question)) {
+    if (!profile.country || !verified.has('country')) return none('Country not verified in your profile');
+    if (!options?.length) return { answer: profile.country, confidence: 0.9, needsUser: false };
+    const m = matchOption(options, profile.country);
+    return m ? { answer: m.option, confidence: m.confidence, needsUser: false } : none('No option matches your country');
+  }
 
   if (category === 'work_authorization' || category === 'sponsorship') {
     if (!verified.has('workAuthorizations')) return none('Work authorization is not verified in your profile');

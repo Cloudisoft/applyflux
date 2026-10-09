@@ -1,0 +1,13 @@
+# ApplyFlux on Replit: the API serves the built web app from one origin.
+run = "pnpm start"
+entrypoint = "apps/server/src/index.ts"
+modules = ["nodejs-20", "postgresql-16"]
+
+[deployment]
+build = ["sh", "-c", "corepack enable && pnpm install --frozen-lockfile && pnpm build && pnpm db:migrate"]
+run = ["sh", "-c", "pnpm start"]
+deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 3001
+externalPort = 80

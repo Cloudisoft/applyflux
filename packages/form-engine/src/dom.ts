@@ -3,7 +3,13 @@
 export type FormControl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
 export function cleanText(s: string | null | undefined): string {
-  return (s ?? '').replace(/\s+/g, ' ').replace(/\s*\*\s*$/, '').trim();
+  return (s ?? '').replace(/\s+/g, ' ').replace(/\s*[*✱]+\s*$/, '').trim();
+}
+
+/** Rendered text only (innerText skips hidden helper copy in real browsers; textContent elsewhere). */
+export function renderedText(el: Element): string {
+  const inner = (el as HTMLElement).innerText;
+  return cleanText(typeof inner === 'string' && hasLayout(el.ownerDocument) ? inner.split('\n')[0] : el.textContent);
 }
 
 function hasLayout(doc: Document): boolean {
@@ -95,7 +101,7 @@ function rawLabelOf(el: Element): string {
       (h) => !h.contains(el) && !h.querySelector('input, select, textarea') && cleanText(h.textContent).length > 1,
     );
     if (heading) {
-      const t = cleanText(heading.textContent);
+      const t = renderedText(heading);
       if (t.length < 300) return t;
     }
   }

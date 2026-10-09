@@ -148,6 +148,9 @@ describe('question answering from verified facts', () => {
     expect(classifyQuestion('Are you legally authorized to work in the United States?')).toBe('work_authorization');
     expect(classifyQuestion('What is your gender?')).toBe('demographic');
     expect(classifyQuestion('Why do you want to work here?')).toBe('motivation');
+    // Citizenship / residency are eligibility facts: never AI-answered.
+    expect(classifyQuestion('Are you a Singapore citizen?')).toBe('work_authorization');
+    expect(classifyQuestion('Are you a Singapore permanent resident?')).toBe('work_authorization');
   });
   it('answers authorization for the named country only', () => {
     const a = answerFromProfile('Are you legally authorized to work in the US?', ['Yes', 'No'], autofill());
@@ -161,6 +164,11 @@ describe('question answering from verified facts', () => {
     const a = answerFromProfile('Are you authorized to work in the US?', ['Yes', 'No'], autofill({ verifiedKeys: [] }));
     expect(a.needsUser).toBe(true);
     expect(a.answer).toBeNull();
+  });
+  it('answers country of residence from the verified profile', () => {
+    const p = autofill({ verifiedKeys: ['country'] });
+    expect(answerFromProfile('What is your current country of residence?', ['Select...', 'United Kingdom', 'United States'], p)).toMatchObject({ answer: 'United Kingdom', needsUser: false });
+    expect(answerFromProfile('What is your current country of residence?', ['United Kingdom'], autofill({ verifiedKeys: [] })).needsUser).toBe(true);
   });
   it('picks experience ranges', () => {
     expect(answerFromProfile('How many years of experience do you have?', ['0-2', '3-5', '6-8', '9+'], autofill()).answer).toBe('6-8');
