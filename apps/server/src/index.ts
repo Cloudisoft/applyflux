@@ -23,7 +23,8 @@ const ctx = {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webDist = process.env.WEB_DIST ?? resolve(here, '../../web/dist');
-const app = createApp(ctx, { webDist });
+const extensionZip = process.env.EXTENSION_ZIP ?? resolve(here, '../../extension/release/applyflux-agent.zip');
+const app = createApp(ctx, { webDist, extensionZip });
 
 const server = app.listen(config.PORT, () => {
   console.log(JSON.stringify({ level: 'info', msg: 'ApplyFlux API listening', port: config.PORT, ai: ctx.ai.configured, sandbox: config.ENABLE_SANDBOX }));

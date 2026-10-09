@@ -1,12 +1,19 @@
 // Builds the MV3 extension into dist/. Configure with env vars:
-//   APPLYFLUX_API_URL  (default http://localhost:3001)
-//   APPLYFLUX_WEB_URL  (default http://localhost:5173)
+//   APPLYFLUX_API_URL  (default https://$RAILWAY_PUBLIC_DOMAIN on Railway, else http://localhost:3001)
+//   APPLYFLUX_WEB_URL  (default https://$RAILWAY_PUBLIC_DOMAIN on Railway, else http://localhost:5173)
+//   APPLYFLUX_EXTENSION_KEY  base64 public key pinned as manifest "key" so the extension ID is stable
+//                            (the web app talks to it by ID: VITE_EXTENSION_ID)
+// A production build also writes release/applyflux-agent.zip, which the server offers as a download.
 //   APPLYFLUX_E2E=1    grants host access to the API origin's sandbox only at install time (automated tests)
 import { build, context } from 'esbuild';
-import { cpSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { cpSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { deflateRawSync } from 'node:zlib';
 
-const api = process.env.APPLYFLUX_API_URL ?? 'http://localhost:3001';
-const web = process.env.APPLYFLUX_WEB_URL ?? 'http://localhost:5173';
+const railway = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : undefined;
+const api = process.env.APPLYFLUX_API_URL || railway || 'http://localhost:3001';
+const web = process.env.APPLYFLUX_WEB_URL || railway || 'http://localhost:5173';
+const key = process.env.APPLYFLUX_EXTENSION_KEY?.trim();
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 const origin = (u) => new URL(u).origin;
 const match = (u) => `${origin(u)}/*`;
@@ -32,6 +39,7 @@ const manifest = {
   externally_connectable: { matches: [...new Set([match(web), match(api)])] },
   content_security_policy: { extension_pages: "script-src 'self'; object-src 'self'" },
   minimum_chrome_version: '116',
+  ...(key ? { key } : {}),
 };
 writeFileSync('dist/manifest.json', JSON.stringify(manifest, null, 2));
 
@@ -55,5 +63,37 @@ if (process.argv.includes('--watch')) {
 } else {
   await build(content);
   await build(rest);
-  console.log(`ApplyFlux Agent ${pkg.version} built for API ${api}`);
+  writeZip('dist', 'release/applyflux-agent.zip');
+  console.log(`ApplyFlux Agent ${pkg.version} built for API ${api}${key ? '' : ' (no APPLYFLUX_EXTENSION_KEY: extension ID will vary per install)'}`);
+}
+
+/** Minimal zip writer (deflate), so packaging needs no system zip tool. */
+function writeZip(dir, out) {
+  const files = [];
+  const walk = (d) => readdirSync(d).forEach((f) => (statSync(join(d, f)).isDirectory() ? walk(join(d, f)) : files.push(join(d, f))));
+  walk(dir);
+  const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc32 = (b) => { let c = 0xffffffff; for (const x of b) c = crcTable[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const locals = [], centrals = [];
+  let offset = 0;
+  for (const f of files.sort()) {
+    const name = Buffer.from(relative(dir, f).split('\\').join('/'));
+    const data = readFileSync(f);
+    const comp = deflateRawSync(data);
+    const crc = crc32(data);
+    const head = Buffer.alloc(30);
+    head.writeUInt32LE(0x04034b50, 0); head.writeUInt16LE(20, 4); head.writeUInt16LE(8, 8);
+    head.writeUInt32LE(crc, 14); head.writeUInt32LE(comp.length, 18); head.writeUInt32LE(data.length, 22); head.writeUInt16LE(name.length, 26);
+    const cen = Buffer.alloc(46);
+    cen.writeUInt32LE(0x02014b50, 0); cen.writeUInt16LE(20, 4); cen.writeUInt16LE(20, 6); cen.writeUInt16LE(8, 10);
+    cen.writeUInt32LE(crc, 16); cen.writeUInt32LE(comp.length, 20); cen.writeUInt32LE(data.length, 24); cen.writeUInt16LE(name.length, 28); cen.writeUInt32LE(offset, 42);
+    locals.push(head, name, comp);
+    centrals.push(cen, name);
+    offset += 30 + name.length + comp.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(files.length, 8); end.writeUInt16LE(files.length, 10); end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(offset, 16);
+  mkdirSync('release', { recursive: true });
+  writeFileSync(out, Buffer.concat([...locals, cd, end]));
 }

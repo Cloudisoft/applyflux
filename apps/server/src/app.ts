@@ -18,7 +18,7 @@ import { profileRoutes } from './routes/profile';
 import { publicRoutes } from './routes/public';
 import { sandboxApi, sandboxPages } from './sandbox/routes';
 
-export function createApp(ctx: AppContext, opts: { webDist?: string } = {}) {
+export function createApp(ctx: AppContext, opts: { webDist?: string; extensionZip?: string } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
@@ -79,6 +79,12 @@ export function createApp(ctx: AppContext, opts: { webDist?: string } = {}) {
   if (ctx.config.ENABLE_SANDBOX) authed.use(sandboxApi(ctx));
   app.use('/api', authed);
   app.use('/api', (_req, _res, next) => next(new AppError('NOT_FOUND', 'No such endpoint')));
+
+  // The extension package built for this deployment (see apps/extension/build.mjs).
+  app.get('/downloads/applyflux-agent.zip', (_req, res, next) => {
+    if (!opts.extensionZip || !existsSync(opts.extensionZip)) return next(new AppError('NOT_FOUND', 'The extension package was not built for this deployment'));
+    res.download(opts.extensionZip, 'applyflux-agent.zip');
+  });
 
   // Serve the built web app (single-origin deployment).
   const dist = opts.webDist;
