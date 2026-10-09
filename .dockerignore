@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+apps/extension/release
+.git
+.env
+.env.*
+e2e/screenshots
+e2e/.db-url
+e2e/.server.pid
+playwright-report
+test-results
