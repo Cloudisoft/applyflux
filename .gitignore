@@ -11,3 +11,4 @@ test-results
 apps/extension/release
 e2e/.server.pid
 e2e/.db-url
+e2e/screenshots

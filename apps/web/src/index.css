@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 247 248 252;
+  --surface: 255 255 255;
+  --elevated: 250 251 255;
+  --line: 228 231 241;
+  --ink: 17 19 38;
+  --muted: 96 102 128;
+  --brand: 99 85 245;
+  --brand-soft: 238 236 255;
+  --brand-ink: 67 56 202;
+  --accent: 14 184 214;
+  --success: 16 163 112;
+  --warning: 217 140 6;
+  --danger: 220 53 85;
+  color-scheme: light;
+}
+.dark {
+  --bg: 10 11 24;
+  --surface: 18 20 40;
+  --elevated: 24 27 52;
+  --line: 40 44 78;
+  --ink: 236 238 255;
+  --muted: 152 158 192;
+  --brand: 130 118 255;
+  --brand-soft: 36 33 82;
+  --brand-ink: 186 178 255;
+  --accent: 34 211 238;
+  --success: 52 211 153;
+  --warning: 251 191 36;
+  --danger: 251 113 133;
+  color-scheme: dark;
+}
+
+@layer base {
+  html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  body { @apply bg-bg text-ink font-sans; }
+  h1, h2, h3, h4 { @apply font-display tracking-tight; }
+  /* Grid items default to min-width:auto, which lets long content push layouts past the viewport. */
+  .grid > * { min-width: 0; }
+  ::selection { background: rgb(var(--brand) / 0.25); }
+  :focus-visible { outline: 2px solid rgb(var(--brand)); outline-offset: 2px; border-radius: 6px; }
+}
+
+@layer components {
+  .gradient-text { @apply bg-clip-text text-transparent; background-image: linear-gradient(110deg, rgb(var(--brand)) 10%, rgb(var(--accent)) 90%); }
+  .gradient-brand { background-image: linear-gradient(135deg, rgb(var(--brand)) 0%, #8b5cf6 55%, rgb(var(--accent)) 130%); }
+  .glass { @apply bg-surface/80 backdrop-blur-xl; }
+  .skeleton { @apply rounded-md; background: linear-gradient(90deg, rgb(var(--line) / .6) 25%, rgb(var(--line)) 37%, rgb(var(--line) / .6) 63%); background-size: 400% 100%; @apply animate-shimmer; }
+  .grid-bg { background-image: radial-gradient(rgb(var(--line)) 1px, transparent 1px); background-size: 22px 22px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
