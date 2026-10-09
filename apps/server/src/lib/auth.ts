@@ -21,21 +21,51 @@ export function randomToken(bytes = 32): string {
   return randomBytes(bytes).toString('base64url');
 }
 
-/** Verifies Supabase access tokens: HS256 shared secret (legacy) or the project's JWKS (asymmetric keys). */
-export function createJwtVerifier(config: Config) {
+/**
+ * Verifies Supabase access tokens: HS256 shared secret (legacy) or the project's
+ * JWKS (asymmetric signing keys). If neither verifies locally (e.g. no secret
+ * configured and the project signs with a key not published in JWKS), the
+ * token is checked with Supabase Auth itself (/auth/v1/user), cached briefly.
+ */
+export function createJwtVerifier(config: Config, fetchImpl: typeof fetch = fetch) {
   const secret = config.SUPABASE_JWT_SECRET ? new TextEncoder().encode(config.SUPABASE_JWT_SECRET) : null;
-  const jwks = config.SUPABASE_URL ? createRemoteJWKSet(new URL(`${config.SUPABASE_URL.replace(/\/$/, '')}/auth/v1/.well-known/jwks.json`)) : null;
+  const base = config.SUPABASE_URL?.replace(/\/$/, '');
+  const jwks = base ? createRemoteJWKSet(new URL(`${base}/auth/v1/.well-known/jwks.json`)) : null;
+  const apiKey = config.SUPABASE_SERVICE_ROLE_KEY;
+  const cache = new Map<string, { payload: JWTPayload; until: number }>();
+
+  async function viaAuthServer(token: string): Promise<JWTPayload> {
+    if (!base || !apiKey) throw new Error('No way to verify token');
+    const key = sha256(token);
+    const hit = cache.get(key);
+    if (hit && hit.until > Date.now()) return hit.payload;
+    const res = await fetchImpl(`${base}/auth/v1/user`, { headers: { authorization: `Bearer ${token}`, apikey: apiKey } });
+    if (!res.ok) throw new Error(`auth server rejected token (${res.status})`);
+    const user = (await res.json()) as { id?: string; email?: string; aud?: string };
+    if (!user.id) throw new Error('auth server returned no user');
+    const payload: JWTPayload = { sub: user.id, email: user.email, role: 'authenticated', aud: user.aud ?? 'authenticated' };
+    if (cache.size > 5000) cache.clear();
+    cache.set(key, { payload, until: Date.now() + 60_000 });
+    return payload;
+  }
+
   return async (token: string): Promise<JWTPayload> => {
     const opts = { audience: 'authenticated' };
     if (secret) {
       try {
         return (await jwtVerify(token, secret, opts)).payload;
-      } catch (e) {
-        if (!jwks) throw e;
+      } catch {
+        /* try the next method */
       }
     }
-    if (!jwks) throw new Error('No JWT verification method configured');
-    return (await jwtVerify(token, jwks, opts)).payload;
+    if (jwks) {
+      try {
+        return (await jwtVerify(token, jwks, opts)).payload;
+      } catch {
+        /* try the next method */
+      }
+    }
+    return viaAuthServer(token);
   };
 }
 

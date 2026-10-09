@@ -99,3 +99,25 @@ describe('Anthropic provider', () => {
     expect(calls).toHaveLength(2);
   });
 });
+
+import { createJwtVerifier } from '../src/lib/auth';
+
+describe('Supabase session verification fallback', () => {
+  it('confirms tokens with Supabase Auth when they cannot be verified locally', async () => {
+    const cfg = loadConfig({ ...base, SUPABASE_JWT_SECRET: undefined, SUPABASE_URL: 'https://proj.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'service', STORAGE_DRIVER: 'memory' } as NodeJS.ProcessEnv);
+    const seen: string[] = [];
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      seen.push(url);
+      if (url.endsWith('/jwks.json')) return new Response(JSON.stringify({ keys: [] }), { status: 200 });
+      const auth = new Headers(init?.headers).get('authorization');
+      return auth === 'Bearer good-token'
+        ? new Response(JSON.stringify({ id: 'user-1', email: 'a@b.co', aud: 'authenticated' }), { status: 200 })
+        : new Response('{}', { status: 401 });
+    }) as unknown as typeof fetch;
+    const verify = createJwtVerifier(cfg, fetchImpl);
+    expect(await verify('good-token')).toMatchObject({ sub: 'user-1', role: 'authenticated' });
+    await verify('good-token'); // cached
+    expect(seen.filter((u) => u.endsWith('/auth/v1/user'))).toHaveLength(1);
+    await expect(verify('bad-token')).rejects.toThrow();
+  });
+});
