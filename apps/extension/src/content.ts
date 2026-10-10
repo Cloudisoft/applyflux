@@ -25,6 +25,7 @@ import {
   type PassResult,
 } from '@applyflux/form-engine';
 import type { ExtensionReport, ResolvedAnswer } from '@applyflux/shared';
+import { hideGuide, showGuide } from './guide';
 import type { Phase, RunContext } from './messages';
 
 declare global {
@@ -73,6 +74,7 @@ async function waitForVerification(ctx: RunContext, resumePhase: 'filling' | 'su
     checkControl();
     const c = detectChallenge(document);
     if (challengeResolved(c)) {
+      hideGuide();
       try {
         await report(ctx, { type: 'verification_resolved', data: { challengeVisible: c.challengeVisible, tokenPresent: c.present ? c.tokenPresent : true, provider: c.provider ?? 'none', observedAt: new Date().toISOString() } });
         await phase(ctx, resumePhase);
@@ -101,6 +103,11 @@ async function clearsOnItsOwn(engine: EngineContext): Promise<boolean> {
 async function handleBlockers(ctx: RunContext, pass: PassResult, engine?: EngineContext): Promise<'continue' | 'stop'> {
   if (pass.blockedByChallenge && engine && (await clearsOnItsOwn(engine))) return 'continue';
   if (pass.blockedByChallenge) {
+    showGuide(
+      pass.challenge.provider === 'interstitial' ? 'Security check' : 'Quick verification',
+      pass.challenge.provider === 'interstitial' ? 'Complete the check on this page. ApplyFlux continues by itself afterwards.' : 'Complete the highlighted check. ApplyFlux fills the rest and continues by itself.',
+      { highlightCaptcha: pass.challenge.provider !== 'interstitial' },
+    );
     await report(ctx, { type: 'intervention', data: { intervention: 'captcha', message: `${pass.challenge.provider === 'interstitial' ? 'A security check' : 'A verification challenge'} appeared. Please complete it in this tab.`, fields: toReported(pass.results), stepState: { url: location.href }, pageUrl: location.href } });
     await waitForVerification(ctx);
     return 'continue';
@@ -134,6 +141,7 @@ async function submitAndVerify(ctx: RunContext, engine: EngineContext) {
   const adapter = engine.adapter;
   // A visible "I'm not a robot" checkbox: everything else is filled, so ask the person to tick it, then submit.
   if (challengeBlocking(detectChallenge(document))) {
+    showGuide('Almost done', 'Everything is filled in. Tick the highlighted check and ApplyFlux submits for you.', { highlightCaptcha: true });
     await report(ctx, { type: 'intervention', data: { intervention: 'captcha', message: 'The form is filled. Please tick the verification checkbox in this tab and ApplyFlux will submit.', pageUrl: location.href } });
     await waitForVerification(ctx, 'filling');
   }
@@ -150,6 +158,7 @@ async function submitAndVerify(ctx: RunContext, engine: EngineContext) {
     }, 8000);
     const c = detectChallenge(document);
     if (challengeBlocking(c)) {
+      showGuide('Quick verification', 'The site asked for a check when submitting. Complete it and ApplyFlux finishes the submission.', { highlightCaptcha: true });
       await report(ctx, { type: 'intervention', data: { intervention: 'captcha', message: 'A verification challenge appeared when submitting. Please complete it in this tab.', pageUrl: location.href } });
       await waitForVerification(ctx, 'submitting');
       // Only re-submit when the first click demonstrably did not go through.
@@ -260,6 +269,7 @@ async function run(ctx: RunContext) {
       await submitAndVerify(ctx, engine);
       return;
     }
+    showGuide('Ready for your review', 'ApplyFlux filled this application. Check the answers, then submit.');
     await report(ctx, { type: 'ready_for_review', data: { fields, pageUrl: location.href } });
     await phase(ctx, 'awaiting_review');
     watchManualSubmit(ctx);

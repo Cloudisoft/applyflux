@@ -23,6 +23,12 @@ export async function pingExtension() {
   return send<{ ok: boolean; connected: boolean; version: string }>({ type: 'af:ping' });
 }
 
+/** Bring the tab of an application the extension is holding (verification, review) to the front. */
+export async function focusExtensionTab(applicationId?: string) {
+  const r = await send<{ ok: boolean }>({ type: 'af:focus', applicationId });
+  return !!r?.ok;
+}
+
 export async function pairExtension(code: string) {
   return send<{ ok: boolean; error?: string }>({ type: 'af:pair', code });
 }

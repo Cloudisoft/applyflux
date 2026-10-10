@@ -34,16 +34,16 @@ async function render() {
   $('badge').classList.toggle('on', !!token);
   $('status-text').textContent = s === 'working' ? PHASE[status?.phase] ?? LABEL.working : (LABEL[s] ?? s) + (status?.idleReason ? ` (${status.idleReason})` : '');
   $('job').textContent = status?.job ? `${status.job.title} · ${status.job.company}` : status?.counts ? `${status.counts.queued} queued · ${status.counts.attention} need attention` : '';
-  $('focus').hidden = s !== 'working';
+  const waiting = Number(status?.waiting ?? 0);
+  $('focus').hidden = !(s === 'working' || waiting > 0);
+  $('focus').textContent = waiting > 0 ? `Show what needs you (${waiting})` : 'Show application tab';
+  $('focus').classList.toggle('attention', waiting > 0);
   ($('start') as HTMLButtonElement).disabled = s === 'running' || s === 'working';
   ($('pause') as HTMLButtonElement).disabled = !(s === 'running' || s === 'working');
   $('error').textContent = s === 'error' ? status?.error ?? '' : '';
   const sites = await chrome.permissions.contains({ origins: ['https://*/*'] });
   $('grant-sites').textContent = sites ? 'Job site access granted' : 'Allow job sites';
   ($('grant-sites') as HTMLButtonElement).disabled = sites;
-  const notes = await chrome.permissions.contains({ permissions: ['notifications'] });
-  ($('grant-notify') as HTMLButtonElement).disabled = notes;
-  $('grant-notify').textContent = notes ? 'Notifications enabled' : 'Enable notifications';
 }
 
 $('pair-form').addEventListener('submit', async (e) => {
@@ -69,10 +69,6 @@ $('disconnect').addEventListener('click', async (e) => {
 // Optional permissions are requested only when the person asks, from a user gesture.
 $('grant-sites').addEventListener('click', async () => {
   await chrome.permissions.request({ origins: ['https://*/*', 'http://*/*'] });
-  render();
-});
-$('grant-notify').addEventListener('click', async () => {
-  await chrome.permissions.request({ permissions: ['notifications'] });
   render();
 });
 chrome.storage.onChanged.addListener(render);

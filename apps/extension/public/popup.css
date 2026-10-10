@@ -9,3 +9,5 @@ button.secondary{background:var(--panel);border:1px solid var(--line);color:var(
 button.wide{width:100%;margin-top:6px}.row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:10px 0}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px}.label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 #status-text{font-weight:600;font-size:14px}.muted{color:var(--muted)}.error{color:var(--danger);min-height:1em;margin:8px 0 0}.links{margin-top:12px;text-align:center;color:var(--muted)}a{color:var(--brand2)}
+
+button.attention { background: #e11d48; color: #fff; border-color: #e11d48; }

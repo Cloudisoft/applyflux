@@ -26,7 +26,8 @@ import {
 import { Logo, ThemeToggle } from '@/components/brand';
 import { Badge, Spinner } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { useAutomation, useMe, useNotifications, useRealtime } from '@/lib/queries';
+import { useApplications, useAutomation, useMe, useNotifications, useRealtime } from '@/lib/queries';
+import { focusExtensionTab } from '@/lib/extension';
 import { cn, initials } from '@/lib/utils';
 
 const NAV: Array<{ group: string; items: Array<{ to: string; label: string; icon: React.ElementType; end?: boolean }> }> = [
@@ -209,9 +210,37 @@ export function AppLayout() {
               <Badge tone="neutral">Note</Badge> AI drafting isn't configured on this server, so cover letters and open-ended answers need your input. Everything else works.
             </div>
           )}
+          <NeedsYouBanner />
           <Outlet />
         </main>
       </div>
+    </div>
+  );
+}
+
+/** Shown on every page while an application waits for a quick check from the person. */
+function NeedsYouBanner() {
+  const { data } = useApplications({ state: ['AWAITING_HUMAN_VERIFICATION'] });
+  const waiting = data?.items ?? [];
+  const nav = useNavigate();
+  if (!waiting.length) return null;
+  const first = waiting[0];
+  return (
+    <div role="status" className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
+      <span className="relative flex h-2.5 w-2.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warning opacity-75" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-warning" /></span>
+      <span className="min-w-0 flex-1">
+        <b>{waiting.length === 1 ? `${first.company} needs a quick check` : `${waiting.length} applications need a quick check`}</b>
+        <span className="text-muted"> · tick the highlighted box in the tab and ApplyFlux carries on. Everything else keeps running.</span>
+      </span>
+      <button
+        type="button"
+        className="rounded-xl bg-warning px-3 py-1.5 font-semibold text-black hover:opacity-90"
+        onClick={async () => {
+          if (!(await focusExtensionTab(first.id))) nav(`/app/applications?id=${first.id}`);
+        }}
+      >
+        Go to the tab
+      </button>
     </div>
   );
 }

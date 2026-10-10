@@ -232,3 +232,65 @@ test('Outcomes are reported honestly: unverified, rejected by validation, sign-i
   expect(c.intervention.type).toBe('login_required');
   await api.post('/automation/stop');
 });
+
+test('A CAPTCHA parks only its own application: the next one is filled and submitted meanwhile, with an on-page guide and icon badge', async () => {
+  const api = await newUser('parallel@example.com');
+  await pairViaPopup(api);
+  await api.put('/automation/preferences', { mode: 'auto', dailyLimit: 10, maxConcurrency: 1, minMatchScore: 0, excludedCompanies: [], excludedKeywords: [] });
+  await api.post('/automation/consent', { version: AUTO_SUBMIT_CONSENT_VERSION, accepted: true });
+  const blocked = await queue(api, 'captcha-before');
+  const other = await queue(api, 'standard');
+  await api.post('/automation/start');
+
+  await waitForState(api, blocked.applicationId, ['AWAITING_HUMAN_VERIFICATION']);
+  const page = await sandboxPage(blocked.ref);
+  // The guide banner is on the page (rendered in a shadow root by the extension).
+  await expect.poll(() => page.evaluate(() => !!document.querySelector('[data-applyflux-guide]'))).toBe(true);
+
+  // Without the person, the next application is completed.
+  const second = await waitForState(api, other.applicationId, ['SUBMITTED', 'SUBMISSION_UNVERIFIED', 'NEEDS_ATTENTION', 'FAILED'], 90_000);
+  expect(second.state, JSON.stringify(second.intervention ?? second.lastError)).toBe('SUBMITTED');
+  expect((await api.get(`/applications/${blocked.applicationId}`)).state).toBe('AWAITING_HUMAN_VERIFICATION');
+
+  // The extension icon shows one application waiting.
+  const [sw] = context.serviceWorkers();
+  expect(await sw.evaluate(() => chrome.action.getBadgeText({}))).toBe('1');
+
+  // The popup's "Show what needs you" button brings the waiting tab to the front.
+  const popup = await context.newPage();
+  await popup.goto(`chrome-extension://${extId}/popup.html`);
+  await expect(popup.locator('#focus')).toHaveText('Show what needs you (1)');
+  await popup.click('#focus');
+  await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe('visible');
+  await popup.close();
+
+  // The person completes the check; the guide disappears and the parked application finishes.
+  await page.check('#af-captcha-check');
+  await page.click('#af-captcha-verify');
+  const first = await waitForState(api, blocked.applicationId, ['SUBMITTED', 'SUBMISSION_UNVERIFIED', 'NEEDS_ATTENTION', 'FAILED']);
+  expect(first.state, JSON.stringify(first.intervention ?? first.lastError)).toBe('SUBMITTED');
+  await expect.poll(() => page.evaluate(() => !!document.querySelector('[data-applyflux-guide]')).catch(() => false)).toBe(false);
+  await expect.poll(() => sw.evaluate(() => chrome.action.getBadgeText({}))).toBe('');
+  expect(await submissions('captcha-before', blocked.ref)).toBe(1);
+  expect(await submissions('standard', other.ref)).toBe(1);
+  await api.post('/automation/stop');
+});
+
+test('Extension popup buttons: start, pause, stop and disconnect all work', async () => {
+  const api = await newUser('popup@example.com');
+  await pairViaPopup(api);
+  const popup = await context.newPage();
+  await popup.goto(`chrome-extension://${extId}/popup.html`);
+  await expect(popup.locator('#main')).toBeVisible();
+  await popup.click('#start');
+  await expect.poll(async () => (await api.get('/automation')).run?.status).toBe('running');
+  await expect(popup.locator('#pause')).toBeEnabled();
+  await popup.click('#pause');
+  await expect.poll(async () => (await api.get('/automation')).run?.status).toBe('paused');
+  await popup.click('#stop');
+  await expect.poll(async () => (await api.get('/automation')).run?.status ?? 'stopped').toBe('stopped');
+  await expect(popup.locator('#open-app')).toHaveAttribute('href', /^https?:\/\//);
+  await popup.click('#disconnect');
+  await expect(popup.locator('#code')).toBeVisible();
+  await popup.close();
+});

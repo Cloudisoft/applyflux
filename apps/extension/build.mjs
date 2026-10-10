@@ -31,11 +31,11 @@ const manifest = {
   action: { default_popup: 'popup.html', default_title: 'ApplyFlux Agent' },
   background: { service_worker: 'background.js', type: 'module' },
   // Minimum permissions. Site access and notifications are optional and requested from the popup.
-  permissions: ['storage', 'alarms', 'scripting'],
+  // notifications + offscreen (alert sound) are on by default so nobody has to find a setting to be told when they're needed.
+  permissions: ['storage', 'alarms', 'scripting', 'notifications', 'offscreen'],
   // The API origin hosts the ApplyFlux Sandbox used for the onboarding test run.
   host_permissions: [match(api)],
   optional_host_permissions: ['https://*/*', 'http://*/*'],
-  optional_permissions: ['notifications'],
   externally_connectable: { matches: [...new Set([match(web), match(api)])] },
   content_security_policy: { extension_pages: "script-src 'self'; object-src 'self'" },
   minimum_chrome_version: '116',
@@ -44,7 +44,7 @@ const manifest = {
 writeFileSync('dist/manifest.json', JSON.stringify(manifest, null, 2));
 
 const opts = {
-  entryPoints: { background: 'src/background.ts', content: 'src/content.ts', popup: 'src/popup.ts' },
+  entryPoints: { background: 'src/background.ts', content: 'src/content.ts', popup: 'src/popup.ts', offscreen: 'src/offscreen.ts' },
   outdir: 'dist',
   bundle: true,
   format: 'esm',
@@ -56,7 +56,7 @@ const opts = {
 };
 // Content scripts injected with executeScript are classic scripts: build that one as an IIFE.
 const content = { ...opts, entryPoints: { content: 'src/content.ts' }, format: 'iife' };
-const rest = { ...opts, entryPoints: { background: 'src/background.ts', popup: 'src/popup.ts' } };
+const rest = { ...opts, entryPoints: { background: 'src/background.ts', popup: 'src/popup.ts', offscreen: 'src/offscreen.ts' } };
 
 if (process.argv.includes('--watch')) {
   for (const o of [content, rest]) await (await context(o)).watch();

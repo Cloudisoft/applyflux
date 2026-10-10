@@ -22,9 +22,10 @@ export const ContentToBackground = z.discriminatedUnion('type', [
 ]);
 export type ContentToBackground = z.infer<typeof ContentToBackground>;
 
-/** Messages from ApplyFlux web pages (externally_connectable). Only pairing is accepted. */
+/** Messages from ApplyFlux web pages (externally_connectable): status, pairing, and bringing a waiting tab forward. */
 export const ExternalMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('af:ping') }),
+  z.object({ type: z.literal('af:focus'), applicationId: z.string().uuid().optional() }),
   z.object({ type: z.literal('af:pair'), code: z.string().regex(/^[A-Z0-9]{4}-?[A-Z0-9]{4}$/i), apiBase: z.string().url().optional() }),
 ]);
 

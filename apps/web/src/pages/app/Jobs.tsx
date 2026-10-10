@@ -63,6 +63,8 @@ export function JobDiscovery({ matchMode = false }: { matchMode?: boolean }) {
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [importOpen, setImportOpen] = React.useState(false);
   const [sourcesOpen, setSourcesOpen] = React.useState(false);
+  const [saveOpen, setSaveOpen] = React.useState(false);
+  const [searchName, setSearchName] = React.useState('');
   const { data, isLoading, error, refetch, isFetching } = useJobs({ ...f, pageSize: 25 });
   const { data: saved } = useSavedSearches();
   const enqueue = useAction((ids: string[]) => api.post<Array<{ status: string; reason?: string }>>('/applications/enqueue', { jobIds: ids }), {
@@ -74,7 +76,7 @@ export function JobDiscovery({ matchMode = false }: { matchMode?: boolean }) {
     },
     onSuccess: () => setSelected(new Set()),
   });
-  const saveSearch = useAction((name: string) => api.post('/saved-searches', { name, query: { ...f, page: undefined } }), { success: 'Search saved', invalidate: [qk.savedSearches] });
+  const saveSearch = useAction((name: string) => api.post('/saved-searches', { name, query: { ...f, page: undefined } }), { success: 'Search saved', invalidate: [qk.savedSearches], onSuccess: () => setSaveOpen(false) });
   const set = (patch: Partial<Filters>) => setF((p) => ({ ...p, ...patch, page: patch.page ?? 1 }));
 
   return (
@@ -103,6 +105,8 @@ export function JobDiscovery({ matchMode = false }: { matchMode?: boolean }) {
           onSubmit={(e) => {
             e.preventDefault();
             set({ q: qDraft || undefined });
+            // Pressing Search always fetches fresh results, even when the filters did not change.
+            void refetch();
           }}
         >
           <div className="relative">
@@ -153,7 +157,7 @@ export function JobDiscovery({ matchMode = false }: { matchMode?: boolean }) {
                 ))}
               </Select>
             )}
-            <Button size="sm" variant="ghost" onClick={() => { const n = prompt('Name this search'); if (n) saveSearch.mutate(n); }}>
+            <Button size="sm" variant="ghost" onClick={() => { setSearchName([f.q, f.location, f.remoteOnly ? 'Remote' : ''].filter(Boolean).join(' · ') || 'My search'); setSaveOpen(true); }}>
               <Save className="h-4 w-4" /> Save search
             </Button>
           </div>
@@ -213,6 +217,17 @@ export function JobDiscovery({ matchMode = false }: { matchMode?: boolean }) {
         </Card>
       )}
       <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
+      <Dialog
+        open={saveOpen}
+        onOpenChange={setSaveOpen}
+        title="Save this search"
+        description="Saved searches keep your filters one click away."
+        footer={<><Button variant="secondary" onClick={() => setSaveOpen(false)}>Cancel</Button><Button disabled={!searchName.trim()} loading={saveSearch.isPending} onClick={() => saveSearch.mutate(searchName.trim())}>Save</Button></>}
+      >
+        <form onSubmit={(e) => { e.preventDefault(); if (searchName.trim()) saveSearch.mutate(searchName.trim()); }}>
+          <Field label="Name" htmlFor="search-name"><Input id="search-name" autoFocus value={searchName} onChange={(e) => setSearchName(e.target.value)} maxLength={80} /></Field>
+        </form>
+      </Dialog>
       <SourcesDialog open={sourcesOpen} onOpenChange={setSourcesOpen} />
     </div>
   );

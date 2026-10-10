@@ -2,7 +2,8 @@ import * as React from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, ExternalLink, Hand, RotateCcw, SkipForward, Send, ShieldAlert, XCircle } from 'lucide-react';
 import { STATE_LABELS, type ApplicationState } from '@applyflux/shared';
-import { Badge, Button, ConfirmDialog, Dialog, Progress, Select, Textarea } from './ui';
+import { Badge, Button, ConfirmDialog, Dialog, Progress, Select, Textarea, buttonVariants } from './ui';
+import { focusExtensionTab } from '@/lib/extension';
 import { StateBadge } from './brand';
 import { api } from '@/lib/api';
 import { qk, useAction } from '@/lib/queries';
@@ -32,11 +33,21 @@ export function ApplicationActions({ app, compact }: { app: Application; compact
           <Send className="h-4 w-4" /> Approve & submit
         </Button>
       )}
-      {(s === 'AWAITING_REVIEW' || s === 'AWAITING_HUMAN_VERIFICATION' || s === 'NEEDS_ATTENTION') && app.url && (
-        <a href={app.intervention?.pageUrl || app.url} target="_blank" rel="noopener noreferrer">
-          <Button size={size} variant="secondary">
-            <ExternalLink className="h-4 w-4" /> Open application
-          </Button>
+      {(s === 'AWAITING_REVIEW' || s === 'AWAITING_HUMAN_VERIFICATION') && app.url && (
+        <Button
+          size={size}
+          variant={s === 'AWAITING_HUMAN_VERIFICATION' ? 'primary' : 'secondary'}
+          onClick={async () => {
+            // The extension holds this tab: verifying in a fresh tab would not count, so bring that tab forward.
+            if (!(await focusExtensionTab(app.id))) window.open(app.intervention?.pageUrl || app.url, '_blank', 'noopener,noreferrer');
+          }}
+        >
+          <ExternalLink className="h-4 w-4" /> Go to the tab
+        </Button>
+      )}
+      {s === 'NEEDS_ATTENTION' && app.url && (
+        <a href={app.intervention?.pageUrl || app.url} target="_blank" rel="noopener noreferrer" className={buttonVariants({ size, variant: 'secondary' })}>
+          <ExternalLink className="h-4 w-4" /> Open application
         </a>
       )}
       {(s === 'NEEDS_ATTENTION' || s === 'FAILED' || s === 'SKIPPED') && !app.submitAttemptedAt && (
@@ -136,7 +147,7 @@ export function InterventionCard({ app }: { app: Application }) {
           <p className="mt-1 text-sm text-ink/90">{i.message}</p>
           <p className="mt-1 text-sm text-muted">{i.action}</p>
           {isCaptcha && app.state === 'AWAITING_HUMAN_VERIFICATION' && (
-            <p className="mt-2 text-xs text-muted">The application tab is open in the browser running the ApplyFlux extension. ApplyFlux resumes automatically once the page confirms the check is complete — clicking anything here does not count as verification.</p>
+            <p className="mt-2 text-xs text-muted">Click "Go to the tab", tick the highlighted check, and ApplyFlux carries on by itself. Other applications keep going meanwhile.</p>
           )}
         </div>
       </div>
