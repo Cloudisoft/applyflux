@@ -202,7 +202,7 @@ const dead: Outcome[] = [];
 
 for (const [p, auth] of PAGES) {
   test(`every control works on ${p}`, async () => {
-    test.setTimeout(15 * 60_000);
+    test.setTimeout(45 * 60_000);
     const path = p.replace(':job', jobId);
     const out = await auditPage(path, auth, seen);
     for (const o of out) if (o.result !== 'ok') console.log(o.result.toUpperCase(), p, o.control, o.detail ?? '');

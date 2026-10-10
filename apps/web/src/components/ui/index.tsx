@@ -175,7 +175,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
   );
 }
 
-export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel = 'Confirm', danger, onConfirm, loading, children }: { open: boolean; onOpenChange: (o: boolean) => void; title: string; description?: React.ReactNode; confirmLabel?: string; danger?: boolean; onConfirm: () => void; loading?: boolean; children?: React.ReactNode }) {
+export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel = 'Confirm', danger, onConfirm, loading, confirmDisabled, children }: { open: boolean; onOpenChange: (o: boolean) => void; title: string; description?: React.ReactNode; confirmLabel?: string; danger?: boolean; onConfirm: () => void; loading?: boolean; confirmDisabled?: boolean; children?: React.ReactNode }) {
   return (
     <Dialog
       open={open}
@@ -187,7 +187,7 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={loading}>
+          <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={loading} disabled={confirmDisabled}>
             {confirmLabel}
           </Button>
         </>

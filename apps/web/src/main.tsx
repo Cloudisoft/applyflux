@@ -4,7 +4,7 @@ import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import './index.css';
-import { AuthProvider } from '@/lib/auth';
+import { AuthProvider, registerQueryClient } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
 import { TooltipProvider, buttonVariants } from '@/components/ui';
 import { PublicLayout } from '@/layouts/PublicLayout';
@@ -32,6 +32,7 @@ const queryClient = new QueryClient({
     },
   },
 });
+registerQueryClient(queryClient);
 
 function NotFound() {
   return (

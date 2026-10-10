@@ -261,7 +261,7 @@ export function AccountPage() {
         <Card className="border-danger/30"><CardHeader title={<span className="inline-flex items-center gap-2 text-danger"><TriangleAlert className="h-4 w-4" /> Delete account</span>} description="Permanently deletes your profile, resumes, cover letters, answers, jobs, application history and sign-in. This cannot be undone." /><div className="p-5"><Button variant="danger" onClick={() => setOpen(true)}><Trash2 className="h-4 w-4" /> Delete my account</Button></div></Card>
         <Card className="p-5 text-sm text-muted"><div className="flex items-center gap-2 font-semibold text-ink"><ShieldCheck className="h-4 w-4 text-brand" /> Privacy commitments</div><p className="mt-2">ApplyFlux logs minimal personal data, keeps secrets server-side, and never shares your information with employers except through applications you authorise. <Link to="/security" className="font-semibold text-brand-ink hover:underline">Read more</Link></p></Card>
       </div>
-      <ConfirmDialog open={open} onOpenChange={setOpen} danger title="Delete your account?" description="Type DELETE to confirm." confirmLabel="Delete everything" loading={del.isPending} onConfirm={() => confirm === 'DELETE' && del.mutate(undefined)}>
+      <ConfirmDialog open={open} onOpenChange={setOpen} danger title="Delete your account?" description="Type DELETE to confirm." confirmLabel="Delete everything" loading={del.isPending} confirmDisabled={confirm !== 'DELETE'} onConfirm={() => confirm === 'DELETE' && del.mutate(undefined)}>
         <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="DELETE" aria-label="Type DELETE to confirm" />
       </ConfirmDialog>
     </div>

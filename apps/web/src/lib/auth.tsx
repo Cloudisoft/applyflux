@@ -26,7 +26,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       session,
       loading,
       signOut: async () => {
-        await supabase.auth.signOut();
+        // Sign out everywhere when the server is reachable; otherwise still sign out on this device.
+        try {
+          const { error } = await supabase.auth.signOut();
+          if (error) throw error;
+        } catch {
+          await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+          for (const k of Object.keys(localStorage)) if (/^sb-.*-auth-token$/.test(k)) localStorage.removeItem(k);
+        }
+        queryClientRef?.clear();
         setSession(null);
       },
     }),
@@ -36,3 +44,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 export const useAuth = () => React.useContext(Ctx);
+
+/** Cached data from the previous account must not survive a sign-out. */
+let queryClientRef: { clear: () => void } | null = null;
+export function registerQueryClient(qc: { clear: () => void }) {
+  queryClientRef = qc;
+}
