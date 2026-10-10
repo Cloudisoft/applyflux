@@ -143,7 +143,9 @@ async function discover(ctx: AppContext, userId: string, startedAt: string): Pro
       if (fit <= 0 || !isRecent(job.postedAt, RECENT_DAYS)) return false;
       // Internships and new-grad programmes only for people starting out.
       if (!entryLevel && JUNIOR_ONLY.test(job.title)) return false;
-      const key = `${normalizeText(job.company)}|${normalizeText(job.title)}|${normalizeText(job.location ?? '')}`;
+      // Same role listed with its cities in a different order is one job.
+      const where = normalizeText(job.location ?? '').split(/[;,|/·]+/).map((x) => x.trim()).filter(Boolean).sort().join(',');
+      const key = `${normalizeText(job.company)}|${normalizeText(job.title)}|${where}`;
       if (seen.has(key)) return false;
       seen.add(key);
       if (excludedCompanies.some((c) => c && normalizeText(job.company).includes(c))) return false;

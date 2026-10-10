@@ -255,6 +255,8 @@ describe('automatic discovery filters', () => {
     expect(titleFit('Staff Software Engineer, Web (React)', targets)).toBeGreaterThan(0);
     expect(titleFit('Backend Engineer', targets)).toBe(0);
     expect(titleFit('Account Executive', ['Software Engineer'])).toBe(0);
+    expect(titleFit('Senior Product Policy Lead, Regulation', ['Product Manager'])).toBe(0);
+    expect(titleFit('Growth Product Manager', ['Product Manager'])).toBe(1);
     expect(titleKeywords('Sr. Product Manager II')).toEqual(['product', 'manager']);
   });
   it('respects remote and location preferences, and explicit remote regions', () => {
@@ -262,6 +264,9 @@ describe('automatic discovery filters', () => {
     expect(locationFits({ location: 'Remote', workplaceType: 'remote' }, us)).toBe(true);
     expect(locationFits({ location: 'Remote (US only)', workplaceType: 'remote' }, us)).toBe(true);
     expect(locationFits({ location: 'Remote - Europe', workplaceType: 'remote' }, us)).toBe(false);
+    expect(locationFits({ location: 'Amsterdam; Milan', workplaceType: 'remote' }, us)).toBe(false);
+    expect(locationFits({ location: 'Vancouver, British Columbia; Toronto, Ontario', workplaceType: 'remote' }, us)).toBe(false);
+    expect(locationFits({ location: 'San Francisco; US - Remote', workplaceType: 'remote' }, us)).toBe(true);
     expect(locationFits({ location: 'Berlin, Germany', workplaceType: null }, us)).toBe(false); // office job, remote only
     const office = { workplaceTypes: ['onsite', 'hybrid'], desiredLocations: ['London'], city: null, country: 'United Kingdom' };
     expect(locationFits({ location: 'London, UK', workplaceType: 'hybrid' }, office)).toBe(true);

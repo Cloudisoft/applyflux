@@ -19,7 +19,7 @@ const SYNONYMS: Record<string, string[]> = {
   frontend: ['frontend', 'front', 'ui', 'react', 'web'],
   backend: ['backend', 'back', 'server', 'api', 'platform'],
   fullstack: ['fullstack', 'full', 'stack'],
-  manager: ['manager', 'management', 'lead', 'head', 'director'],
+  manager: ['manager', 'management', 'pm'],
   designer: ['designer', 'design'],
   analyst: ['analyst', 'analytics', 'analysis'],
   scientist: ['scientist', 'science'],
@@ -98,7 +98,28 @@ const COUNTRY_ALIASES: Record<string, string[]> = {
   brazil: ['brazil', 'latam', 'latin america', 'south america'],
   mexico: ['mexico', 'latam', 'latin america', 'north america'],
 };
+/** Major hiring cities, so "Remote — Amsterdam; Milan" is recognised as a European role. */
+const CITY_COUNTRY: Record<string, string> = {
+  'new york': 'united states', 'san francisco': 'united states', seattle: 'united states', austin: 'united states', boston: 'united states', chicago: 'united states',
+  'los angeles': 'united states', denver: 'united states', atlanta: 'united states', miami: 'united states', 'washington dc': 'united states', dallas: 'united states',
+  'palo alto': 'united states', 'mountain view': 'united states', 'san jose': 'united states', 'san mateo': 'united states', 'bay area': 'united states', nyc: 'united states',
+  london: 'united kingdom', manchester: 'united kingdom', edinburgh: 'united kingdom', cambridge: 'united kingdom', dublin: 'ireland',
+  amsterdam: 'netherlands', rotterdam: 'netherlands', berlin: 'germany', munich: 'germany', hamburg: 'germany', frankfurt: 'germany', paris: 'france',
+  madrid: 'spain', barcelona: 'spain', lisbon: 'portugal', porto: 'portugal', milan: 'italy', rome: 'italy', zurich: 'switzerland', geneva: 'switzerland',
+  stockholm: 'sweden', copenhagen: 'denmark', oslo: 'norway', helsinki: 'finland', warsaw: 'poland', krakow: 'poland', prague: 'czechia', vienna: 'austria',
+  brussels: 'belgium', 'tel aviv': 'israel', toronto: 'canada', vancouver: 'canada', montreal: 'canada', ottawa: 'canada', bangalore: 'india', bengaluru: 'india',
+  hyderabad: 'india', pune: 'india', mumbai: 'india', delhi: 'india', gurgaon: 'india', chennai: 'india', noida: 'india', sydney: 'australia', melbourne: 'australia',
+  singapore: 'singapore', tokyo: 'japan', seoul: 'south korea', 'hong kong': 'hong kong', 'sao paulo': 'brazil', 'mexico city': 'mexico', 'buenos aires': 'argentina',
+};
 const ALL_PLACE_WORDS = [...new Set(Object.values(COUNTRY_ALIASES).flat())];
+
+/** Countries a location string clearly names (directly, by alias, or through a major city). */
+function countriesIn(loc: string): Set<string> {
+  const out = new Set<string>();
+  for (const [k, aliases] of Object.entries(COUNTRY_ALIASES)) if (aliases.some((a) => mentions(loc, a))) out.add(k);
+  for (const [city, country] of Object.entries(CITY_COUNTRY)) if (mentions(loc, city)) out.add(country);
+  return out;
+}
 
 function countryKey(country: string | null | undefined): string | null {
   if (!country) return null;
@@ -132,8 +153,9 @@ export function locationFits(job: { location: string | null; workplaceType: stri
     // "Remote (US only)", "Remote - Europe": respect explicit regions when we know the person's country.
     if (!home || /\b(anywhere|worldwide|global)\b/i.test(loc)) return true;
     const named = ALL_PLACE_WORDS.filter((p) => mentions(loc, p));
-    if (!named.length) return true;
-    return (COUNTRY_ALIASES[home] ?? [home]).some((a) => named.includes(a));
+    const countries = countriesIn(loc);
+    if (!named.length && !countries.size) return true;
+    return countries.has(home) || (COUNTRY_ALIASES[home] ?? [home]).some((a) => named.includes(a));
   }
   if (!wantsOffice) return false;
   if (!loc.trim()) return true;
@@ -141,9 +163,9 @@ export function locationFits(job: { location: string | null; workplaceType: stri
   if (places.some((p) => normalizeText(loc).includes(p))) return true;
   if (prefs.desiredLocations.length || prefs.city) {
     // Same country is acceptable when the person is willing to work anywhere in it.
-    return !!home && (COUNTRY_ALIASES[home] ?? [home]).some((a) => a.length > 2 && mentions(loc, a));
+    return !!home && (countriesIn(loc).has(home) || (COUNTRY_ALIASES[home] ?? [home]).some((a) => a.length > 2 && mentions(loc, a)));
   }
-  return !home || (COUNTRY_ALIASES[home] ?? [home]).some((a) => mentions(loc, a));
+  return !home || countriesIn(loc).has(home) || (COUNTRY_ALIASES[home] ?? [home]).some((a) => mentions(loc, a));
 }
 
 /** Posted within the last `days` days. Postings without a date are kept (boards list only open roles). */
