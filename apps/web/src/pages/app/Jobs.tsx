@@ -6,6 +6,7 @@ import { ScoreRing, StateBadge } from '@/components/brand';
 import { api } from '@/lib/api';
 import { qk, useAction, useJob, useJobs, useSavedSearches, useSources } from '@/lib/queries';
 import type { Job, MatchBreakdown } from '@/lib/types';
+import { DiscoveryPanel } from '@/components/discovery';
 import { cn, salaryRange, timeAgo } from '@/lib/utils';
 
 type Filters = { q?: string; location?: string; remoteOnly?: boolean; employmentType?: string; salaryMin?: string; minScore?: string; excludeApplied?: boolean; bookmarked?: boolean; sponsorshipOk?: boolean; sort: string; page: number };
@@ -81,12 +82,12 @@ export function JobDiscovery({ matchMode = false }: { matchMode?: boolean }) {
       <PageHeader
         eyebrow={matchMode ? 'Smart Match' : 'Opportunities'}
         title={matchMode ? 'Your best matches' : 'Job Discovery'}
-        description={matchMode ? 'Roles ranked by a transparent score against your verified profile. Open any role to see exactly why.' : 'Jobs from the company job boards you follow, plus roles you import. ApplyFlux only lists what it actually fetched.'}
+        description={matchMode ? 'Roles ranked by a transparent score against your verified profile. Open any role to see exactly why.' : 'Recent jobs ApplyFlux found for you across company career sites and job boards. The best matches are queued for Auto Apply automatically.'}
         actions={
           !matchMode && (
             <>
               <Button variant="secondary" onClick={() => setSourcesOpen(true)}>
-                <RefreshCw className="h-4 w-4" /> Job sources
+                <RefreshCw className="h-4 w-4" /> Follow a company
               </Button>
               <Button onClick={() => setImportOpen(true)}>
                 <Plus className="h-4 w-4" /> Import a job
@@ -95,6 +96,7 @@ export function JobDiscovery({ matchMode = false }: { matchMode?: boolean }) {
           )
         }
       />
+      {!matchMode && <DiscoveryPanel />}
       <Card className="mb-4 p-4">
         <form
           className="grid gap-3 md:grid-cols-[2fr_1fr_1fr_auto]"
@@ -187,9 +189,9 @@ export function JobDiscovery({ matchMode = false }: { matchMode?: boolean }) {
             <EmptyState
               className="m-5 border-0"
               icon={<Briefcase className="h-5 w-5" />}
-              title={matchMode ? 'No strong matches yet' : 'No jobs yet'}
-              description={matchMode ? 'Add job sources or lower the minimum score. Completing your profile improves matching.' : 'Follow a company job board (Greenhouse, Lever or Ashby) or import a job by URL.'}
-              action={!matchMode ? <Button onClick={() => setSourcesOpen(true)}>Add a job source</Button> : <Link to="/app/jobs" className={buttonVariants({ variant: 'secondary' })}>Go to Job Discovery</Link>}
+              title={matchMode ? 'No strong matches yet' : 'No jobs here yet'}
+              description={matchMode ? 'Lower the minimum score, or add more target titles to your profile. New jobs arrive automatically.' : 'ApplyFlux is searching for you. Jobs appear here as soon as the search finishes; you can also import a job by URL.'}
+              action={!matchMode ? <Button variant="secondary" onClick={() => setImportOpen(true)}>Import a job</Button> : <Link to="/app/jobs" className={buttonVariants({ variant: 'secondary' })}>Go to Job Discovery</Link>}
             />
           )}
           <div className="divide-y divide-line">

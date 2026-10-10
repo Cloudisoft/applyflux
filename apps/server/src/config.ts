@@ -48,6 +48,10 @@ const Env = z
       .string()
       .optional()
       .transform((v) => v !== 'false'),
+    /** Automatic job discovery: how often each person's search re-runs, and optional Adzuna keys for a broad web search. */
+    DISCOVERY_INTERVAL_HOURS: z.coerce.number().min(1).max(168).default(6),
+    ADZUNA_APP_ID: z.string().optional(),
+    ADZUNA_APP_KEY: z.string().optional(),
   })
   .superRefine((e, ctx) => {
     if (e.STORAGE_DRIVER === 'supabase' && (!e.SUPABASE_URL || !e.SUPABASE_SERVICE_ROLE_KEY))

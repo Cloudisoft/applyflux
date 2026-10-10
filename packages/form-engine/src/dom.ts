@@ -12,7 +12,7 @@ export function renderedText(el: Element): string {
   return cleanText(typeof inner === 'string' && hasLayout(el.ownerDocument) ? inner.split('\n')[0] : el.textContent);
 }
 
-function hasLayout(doc: Document): boolean {
+export function hasLayout(doc: Document): boolean {
   const r = doc.documentElement.getBoundingClientRect?.();
   return !!r && (r.width > 0 || r.height > 0);
 }

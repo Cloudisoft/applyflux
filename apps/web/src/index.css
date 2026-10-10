@@ -38,7 +38,9 @@
 @layer base {
   html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
   body { @apply bg-bg text-ink font-sans; }
-  h1, h2, h3, h4 { @apply font-display tracking-tight; }
+  /* Plus Jakarta Sans has narrow word spaces: keep tracking gentle and give words room, or headings run together. */
+  h1, h2, h3, h4 { @apply font-display; letter-spacing: -0.01em; word-spacing: 0.06em; }
+  h1 { letter-spacing: -0.02em; }
   /* Grid items default to min-width:auto, which lets long content push layouts past the viewport. */
   .grid > * { min-width: 0; }
   ::selection { background: rgb(var(--brand) / 0.25); }

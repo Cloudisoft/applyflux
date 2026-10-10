@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
-import type { AutofillProfile } from '@applyflux/shared';
+import { ScreeningAnswers, type AutofillProfile } from '@applyflux/shared';
 import {
   detectFields,
   mapField,
@@ -60,6 +60,7 @@ const profile = (over: Partial<AutofillProfile> = {}): AutofillProfile => ({
     { company: 'Difference Ltd', title: 'Junior Engineer', location: 'London', startDate: '2017-06', endDate: '2020-02', isCurrent: false, description: null, verified: true },
   ],
   educations: [{ institution: 'University of London', degree: 'Bachelor of Science', fieldOfStudy: 'Mathematics', startDate: '2013', endDate: '2017', verified: true }],
+  screening: ScreeningAnswers.parse({}),
   verifiedKeys: ['firstName', 'lastName', 'fullName', 'email', 'phone', 'linkedinUrl', 'workAuthorizations', 'location', 'city', 'country', 'currentCompany', 'currentTitle'],
   ...over,
 });
@@ -197,15 +198,38 @@ describe('runPass', () => {
 });
 
 describe('human verification', () => {
-  it('detects an unsolved reCAPTCHA and refuses to fill', async () => {
+  it('fills the form around an unticked reCAPTCHA checkbox, which the person ticks before submit', async () => {
     const doc = load('recaptcha.html');
     const c = detectChallenge(doc);
     expect(c.provider).toBe('recaptcha');
-    expect(challengeBlocking(c)).toBe(true);
+    expect(c.widgetVisible).toBe(true);
+    expect(challengeBlocking(c)).toBe(true); // needs the person before submitting
     expect(challengeResolved(c)).toBe(false);
     const pass = await runPass(doc, { adapter: genericAdapter, mode: 'auto', profile: profile(), savedAnswers: [], files: {} });
+    expect(pass.blockedByChallenge).toBe(false);
+    expect((doc.getElementById('first_name') as HTMLInputElement).value).toBe('Ada');
+    expect(pass.results.some((r) => /recaptcha/i.test(r.field.name ?? ''))).toBe(false);
+  });
+  it('does not fill a form locked behind a verification checkbox', async () => {
+    const doc = load('recaptcha.html');
+    for (const id of ['first_name', 'last_name', 'email']) doc.getElementById(id)!.hidden = true;
+    const pass = await runPass(doc, { adapter: genericAdapter, mode: 'auto', profile: profile(), savedAnswers: [], files: {} });
+    expect(pass.blockedByChallenge).toBe(true);
     expect(pass.results).toHaveLength(0);
-    expect((doc.getElementById('first_name') as HTMLInputElement).value).toBe('');
+  });
+  it.each([
+    ['reCAPTCHA v3 / Enterprise (invisible iframe)', '<iframe title="reCAPTCHA" src="https://www.google.com/recaptcha/enterprise/anchor?ar=1&k=key&size=invisible"></iframe><div class="grecaptcha-badge"></div>'],
+    ['reCAPTCHA bound to the submit button', '<button class="g-recaptcha" data-sitekey="key" data-callback="onSubmit">Submit</button>'],
+    ['invisible hCaptcha', '<div class="h-captcha" data-sitekey="key" data-size="invisible"><iframe src="https://newassets.hcaptcha.com/captcha/v1/abc/static/hcaptcha.html#frame=checkbox-invisible"></iframe></div>'],
+    ['an empty widget container whose iframe never rendered', '<div data-sitekey="key"></div>'],
+  ])('never pauses for %s', async (_name, html) => {
+    const doc = new JSDOM(`<!doctype html><form id="f"><label for="first_name">First Name*</label><input id="first_name" required><label for="last_name">Last Name*</label><input id="last_name" required><label for="email">Email*</label><input id="email" type="email" required>${html}<button type="submit">Submit application</button></form>`, { url: 'https://example.com/apply', pretendToBeVisual: true }).window.document;
+    const c = detectChallenge(doc);
+    expect(c.present).toBe(true);
+    expect(challengeBlocking(c)).toBe(false);
+    const pass = await runPass(doc, { adapter: genericAdapter, mode: 'auto', profile: profile(), savedAnswers: [], files: {} });
+    expect(pass.blockedByChallenge).toBe(false);
+    expect((doc.getElementById('first_name') as HTMLInputElement).value).toBe('Ada');
   });
   it('requires a response token as evidence of completion', () => {
     const doc = load('recaptcha.html');

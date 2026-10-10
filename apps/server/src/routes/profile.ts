@@ -14,6 +14,7 @@ import {
   updateSectionItem,
   verifyFields,
 } from '../services/profile';
+import { runDiscovery } from '../services/autodiscover';
 import { refreshMatches } from '../services/jobs';
 
 const SECTION = z.enum(['experiences', 'educations', 'certifications', 'projects']);
@@ -88,6 +89,8 @@ export function profileRoutes(ctx: AppContext) {
       });
       const full = await loadFullProfile(ctx.db, req.user.id);
       await refreshMatches(ctx.db, req.user.id, full);
+      // New target titles or locations: look for matching jobs right away, in the background.
+      if (['desiredTitles', 'desiredLocations', 'workplaceTypes'].some((k) => k in body)) void runDiscovery(ctx, req.user.id);
       res.json({ data: { ...full, assessment: assessProfile(full) } });
     }),
   );

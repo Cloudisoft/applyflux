@@ -136,6 +136,9 @@ export function answerFromProfile(
   const verified = new Set(profile.verifiedKeys);
   const none = (reason: string): ProfileAnswer => ({ answer: null, confidence: 0, needsUser: true, reason });
 
+  const screening = screeningAnswer(question, options, profile);
+  if (screening) return screening;
+
   if (/country of residence|current country|where do you (currently )?(live|reside)|country (are you )?(currently )?(based|located) in/i.test(question)) {
     if (!profile.country || !verified.has('country')) return none('Country not verified in your profile');
     if (!options?.length) return { answer: profile.country, confidence: 0.9, needsUser: false };
@@ -169,7 +172,10 @@ export function answerFromProfile(
       profile.desiredSalaryMax && profile.desiredSalaryMax > profile.desiredSalaryMin
         ? `${profile.desiredSalaryMin}-${profile.desiredSalaryMax}${cur ? ' ' + cur : ''}`
         : `${profile.desiredSalaryMin}${cur ? ' ' + cur : ''}`;
-    if (options?.length) return none('Salary question uses fixed options; please choose one');
+    if (options?.length) {
+      const opt = options.find((o) => salaryRangeContains(o, profile.desiredSalaryMin!));
+      return opt ? { answer: opt, confidence: 0.85, needsUser: false } : none('No salary option contains your expectation');
+    }
     return { answer: /number|numeric/i.test(question) ? String(profile.desiredSalaryMin) : text, confidence: 0.85, needsUser: false };
   }
 
@@ -195,6 +201,85 @@ export function answerFromProfile(
   }
 
   return { answer: null, confidence: 0, needsUser: true, reason: 'Not answerable from profile facts alone' };
+}
+
+/** "$80,000 - $100,000", "80k-100k", "100k+", "Under $50k": does the option contain the amount? */
+function salaryRangeContains(option: string, n: number): boolean {
+  const vals = [...option.toLowerCase().replace(/,/g, '').matchAll(/(\d+(?:\.\d+)?)\s*(k|m)?/g)].map((m) => Number(m[1]) * (m[2] === 'k' ? 1000 : m[2] === 'm' ? 1_000_000 : 1));
+  if (!vals.length) return false;
+  const o = option.toLowerCase();
+  if (vals.length >= 2) return n >= vals[0] && n <= vals[1];
+  if (/\+|or more|above|over|more than/.test(o)) return n >= vals[0];
+  if (/under|less than|below|up to/.test(o)) return n < vals[0];
+  return false;
+}
+
+const DECLINE_OPTION = /decline|prefer not|don.?t wish|do not wish|choose not|rather not|not (to )?(answer|disclose|say|specify|self.?identify)|i don.?t want/i;
+
+/** Pick the option meaning yes/no, or the given text, from a question's options (or answer free text). */
+function choose(options: string[] | undefined, value: boolean | string): string | null {
+  if (typeof value === 'boolean') return options?.length ? pickBooleanOption(options, value) : value ? 'Yes' : 'No';
+  if (!options?.length) return value;
+  return matchOption(options, value, 0.75)?.option ?? options.find((o) => normalizeText(o).includes(normalizeText(value))) ?? null;
+}
+
+/**
+ * Answers the person gave once in their profile ("Application questions"), used on every form.
+ * They are the person's own statements, so they may answer sensitive questions (EEO, consent).
+ */
+function screeningAnswer(question: string, options: string[] | undefined, profile: AutofillProfile): ProfileAnswer | null {
+  const s = profile.screening;
+  if (!s) return null;
+  const q = question.toLowerCase();
+  const ok = (answer: string | null, reason: string): ProfileAnswer =>
+    answer ? { answer, confidence: 0.95, needsUser: false } : { answer: null, confidence: 0, needsUser: true, reason };
+  const bool = (v: boolean | null, what: string): ProfileAnswer | null => (v == null ? null : ok(choose(options, v), `Options do not map cleanly to yes/no for ${what}`));
+
+  if (/(at least|over|older than) (the age of )?18|18 years( of age)?( or older)?|legal (working )?age|of legal age/.test(q)) return bool(s.over18, 'age');
+  if (/background (check|screening)|consumer report/.test(q) && /willing|consent|agree|submit|undergo|authori[sz]e|able to pass/.test(q)) return bool(s.backgroundCheck, 'background check');
+  if (/drug (test|screen)/.test(q)) return bool(s.drugTest, 'drug test');
+  if (/convicted|felony|criminal (record|conviction|offen[cs]e)/.test(q)) return bool(s.felonyConviction, 'criminal history');
+  if (/driver'?s? licen[cs]e|driving licen[cs]e/.test(q)) return bool(s.driversLicense, "driver's licence");
+  if (/commut|on-?site|in[- ]office|in the office|hybrid|come (in)?to (the|our) office/.test(q) && !/relocat/.test(q)) return bool(s.willingOnsite, 'on-site work');
+
+  if (/how did you (hear|find|learn)|where did you (hear|find|see)|referr(al|ed) source|source of (application|referral)|how were you referred/.test(q)) {
+    const src = s.referralSource ?? 'Online job board';
+    if (!options?.length) return ok(src, '');
+    const pick =
+      choose(options, src) ??
+      options.find((o) => /job board|online|internet|website|careers? (site|page)|linkedin|indeed|other/i.test(o)) ??
+      null;
+    return ok(pick, 'No option fits your referral source');
+  }
+
+  // Privacy notices and "I certify this application is accurate" acknowledgements.
+  if (classifyQuestion(question) === 'legal_consent' && /acknowledg|agree|consent|certify|confirm|read and understand|accept|privacy/.test(q)) {
+    if (!s.acceptConsents) return null;
+    if (!options?.length) return ok('Yes', '');
+    return ok(options.find((o) => /^(yes|i (agree|acknowledge|accept|consent|confirm|certify|understand))|agree|acknowledge|accept/i.test(o)) ?? pickBooleanOption(options, true), 'No option clearly means "I agree"');
+  }
+
+  // Voluntary self-identification (EEO): decline unless the person chose to answer.
+  const eeo =
+    /\bgender\b|\bsex\b/.test(q) ? s.gender
+    : /hispanic|latin[oa]/.test(q) ? (s.hispanicLatino == null ? null : s.hispanicLatino)
+    : /\brace\b|ethnic/.test(q) ? s.raceEthnicity
+    : /veteran|military|armed forces/.test(q) ? s.veteranStatus
+    : /disabilit/.test(q) ? s.disabilityStatus
+    : /sexual orientation/.test(q) ? s.sexualOrientation
+    : /pronoun/.test(q) ? s.pronouns
+    : undefined;
+  if (eeo !== undefined && !/date of birth|age range|how old/.test(q)) {
+    if (s.eeo === 'answer' && eeo != null && eeo !== '') {
+      const picked = choose(options, eeo);
+      if (picked) return ok(picked, '');
+    }
+    const decline = options?.find((o) => DECLINE_OPTION.test(o));
+    if (decline) return ok(decline, '');
+    if (!options?.length) return ok('Prefer not to say', '');
+    return { answer: null, confidence: 0, needsUser: true, reason: 'This form has no "prefer not to say" option; please choose an answer' };
+  }
+  return null;
 }
 
 function rangeContains(option: string, n: number): boolean {

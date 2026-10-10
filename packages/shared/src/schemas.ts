@@ -55,6 +55,33 @@ export type WorkAuthorization = z.infer<typeof WorkAuthorization>;
 /* Candidate profile                                                   */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The person's own answers to common screening questions, given once and reused on every form.
+ * These are user-provided facts, so they may answer sensitive questions (EEO, consent) that AI never drafts.
+ */
+const yesNo = z.boolean().nullish().transform((v) => v ?? null);
+export const ScreeningAnswers = z.object({
+  /** Voluntary self-identification (gender, race, veteran, disability): decline by default. */
+  eeo: z.enum(['decline', 'answer']).default('decline'),
+  gender: optionalText(80),
+  raceEthnicity: optionalText(120),
+  hispanicLatino: yesNo,
+  veteranStatus: optionalText(120),
+  disabilityStatus: optionalText(120),
+  sexualOrientation: optionalText(80),
+  pronouns: optionalText(40),
+  over18: yesNo,
+  backgroundCheck: yesNo,
+  drugTest: yesNo,
+  felonyConviction: yesNo,
+  driversLicense: yesNo,
+  willingOnsite: yesNo,
+  /** Tick privacy-notice / "I certify this is accurate" acknowledgements on application forms. */
+  acceptConsents: z.boolean().default(false),
+  referralSource: optionalText(120),
+});
+export type ScreeningAnswers = z.output<typeof ScreeningAnswers>;
+
 export const CandidateProfileInput = z.object({
   firstName: optionalText(80),
   lastName: optionalText(80),
@@ -87,6 +114,7 @@ export const CandidateProfileInput = z.object({
   workplaceTypes: z.array(WorkplaceType).max(3).default([]),
   desiredLocations: z.array(trimmed(120)).max(30).default([]),
   willingToRelocate: z.boolean().nullish().transform((v) => v ?? null),
+  screening: ScreeningAnswers.default({}),
   fieldMeta: z.record(z.string(), FieldMeta).default({}),
 });
 export type CandidateProfileInput = z.input<typeof CandidateProfileInput>;
@@ -412,6 +440,8 @@ export interface AutofillProfile {
   desiredSalaryMax: number | null;
   salaryCurrency: string | null;
   willingToRelocate: boolean | null;
+  /** The person's own screening answers (always theirs, so usable in Auto Mode). */
+  screening: ScreeningAnswers;
   /** Most recent first. `verified` false entries are never typed in Auto Mode. */
   experiences: Array<{ company: string; title: string; location: string | null; startDate: string | null; endDate: string | null; isCurrent: boolean; description: string | null; verified: boolean }>;
   educations: Array<{ institution: string; degree: string | null; fieldOfStudy: string | null; startDate: string | null; endDate: string | null; verified: boolean }>;

@@ -237,6 +237,26 @@ export const genericAdapter: PlatformAdapter = {
       .sort((a, b) => b.n - a.n);
     return scored[0]?.f ?? null;
   },
+  /**
+   * Job boards and career pages: follow the "Apply" link to the employer's form. Links that would open a new tab are
+   * followed in this tab, so the agent keeps working on the page it is responsible for.
+   */
+  openApplication: (d) => {
+    const APPLY = [/^(easy )?apply( now| here| online)?$/i, /^apply (for|to) (this|the) (job|position|role|opportunity)$/i, /^apply on (the )?(company|employer)('s)? (site|website)$/i, /^(start|begin) (your )?application$/i, /^apply$/i];
+    const links = Array.from(d.querySelectorAll<HTMLAnchorElement>('a[href]')).filter((a) => isVisible(a) && APPLY.some((re) => re.test(cleanText(a.textContent || a.getAttribute('aria-label')))));
+    const here = d.location.href.split('#')[0];
+    const link = links.find((a) => /^https?:/i.test(a.href) && a.href.split('#')[0] !== here);
+    if (link) {
+      d.defaultView!.location.href = link.href;
+      return true;
+    }
+    const b = findButton(d, APPLY);
+    if (b) {
+      b.click();
+      return true;
+    }
+    return false;
+  },
   nextButton: (d) => findButton(d, NEXT),
   submitButton: (d) => findButton(d, SUBMIT, NOT_SUBMIT),
 };

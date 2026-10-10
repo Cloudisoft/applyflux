@@ -8,6 +8,7 @@ import { createJwtVerifier } from './lib/auth';
 import { createStorage, supabaseAdmin } from './lib/storage';
 import { makeFetchJson } from './services/discovery';
 import { sweepExpiredLeases } from './services/queue';
+import { startDiscoveryScheduler } from './services/autodiscover';
 
 const config = loadConfig();
 const db = createPool(config);
@@ -44,8 +45,12 @@ const sweeper = setInterval(() => {
     });
 }, 30_000);
 
+// Automatic job discovery for everyone with target titles (no setup needed).
+const stopDiscovery = config.NODE_ENV === 'test' ? () => {} : startDiscoveryScheduler(ctx);
+
 function shutdown() {
   clearInterval(sweeper);
+  stopDiscovery();
   server.close(() => db.end().finally(() => process.exit(0)));
   setTimeout(() => process.exit(1), 10_000).unref();
 }

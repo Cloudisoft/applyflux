@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
+import { clearDiscoveryCache, runDiscovery } from '../src/services/autodiscover';
 import { renderPdf } from '../src/services/documents';
 import { heuristicExtract } from '../src/services/resume';
 import { groundingIssues } from '../src/ai/grounding';
@@ -313,3 +314,56 @@ describe('privacy', () => {
     expect(platforms.find((p: { id: string }) => p.id === 'sandbox').autoSubmit).toBe(true);
   });
 });
+
+describe('automatic job discovery', () => {
+  it('finds recent matching jobs from the catalogue and feeds with no setup, then queues the best', async () => {
+    clearDiscoveryCache();
+    const day = 86_400_000;
+    const recent = new Date(Date.now() - 2 * day).toISOString();
+    const old = new Date(Date.now() - 60 * day).toISOString();
+    env.setBoards({
+      'https://boards-api.greenhouse.io/v1/boards/anthropic/jobs': {
+        status: 200,
+        json: { jobs: [
+          { id: 101, title: 'Senior Frontend Engineer', absolute_url: 'https://job-boards.greenhouse.io/anthropic/jobs/101', location: { name: 'Remote, US' }, first_published: recent },
+          { id: 102, title: 'Frontend Engineer', absolute_url: 'https://job-boards.greenhouse.io/anthropic/jobs/102', location: { name: 'Remote' }, first_published: old },
+          { id: 103, title: 'Account Executive', absolute_url: 'https://job-boards.greenhouse.io/anthropic/jobs/103', location: { name: 'Remote' }, first_published: recent },
+          { id: 104, title: 'Frontend Engineering Intern', absolute_url: 'https://job-boards.greenhouse.io/anthropic/jobs/104', location: { name: 'Remote' }, first_published: recent },
+        ] },
+      },
+      'https://boards-api.greenhouse.io/v1/boards/anthropic/jobs/101': { status: 200, json: { content: '&lt;p&gt;React and TypeScript&lt;/p&gt;' } },
+      'https://remotive.com/api/remote-jobs': {
+        status: 200,
+        json: { jobs: [{ id: 9, url: 'https://remotive.com/remote-jobs/software-dev/front-end-developer-9', title: 'Front-End Developer', company_name: 'Acme', candidate_required_location: 'Worldwide', publication_date: recent, description: '<p>React</p>' }] },
+      },
+    });
+    const u = await createUser(env, 'auto-disc@example.com');
+    await completeProfile(u);
+    await u.patch('/api/profile', { desiredTitles: ['Frontend Engineer'], workplaceTypes: ['remote'], yearsExperience: 6, country: 'United States' });
+    await u.put('/api/automation/preferences', { mode: 'review', dailyLimit: 5, maxConcurrency: 1, minMatchScore: 0, excludedCompanies: [], excludedKeywords: [] });
+    // The profile save already started a run; wait for it rather than racing it.
+    // Saving the profile starts a run (and a re-run for edits made meanwhile); wait for them rather than racing.
+    for (let i = 0; i < 100 && (await u.get('/api/discovery')).body.data.running; i++) await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 50));
+    for (let i = 0; i < 100 && (await u.get('/api/discovery')).body.data.running; i++) await new Promise((r) => setTimeout(r, 100));
+    const s = await runDiscovery(env.ctx, u.id);
+    const status = (await u.get('/api/discovery')).body.data;
+    expect(status.last).toMatchObject({ status: 'ok' });
+    const titles = (await u.get('/api/jobs?pageSize=50')).body.data.items.map((j: { title: string }) => j.title).sort();
+    expect(titles).toEqual(['Front-End Developer', 'Senior Frontend Engineer']); // old, off-target and intern postings dropped
+    const ghId = (await u.get('/api/jobs?q=Senior')).body.data.items[0].id;
+    const gh = (await u.get(`/api/jobs/${ghId}`)).body.data;
+    expect(gh.job?.description ?? gh.description).toMatch(/React and TypeScript/);
+    expect(s?.added ?? 0, JSON.stringify(s)).toBe(0); // a second run adds nothing new
+    const queued = await env.ctx.db.query(`select count(*)::int n from applications where user_id=$1 and state='QUEUED'`, [u.id]);
+    expect(queued.rows[0].n).toBe(2);
+  });
+
+  it('asks for target titles when there is nothing to search for', async () => {
+    clearDiscoveryCache();
+    const u = await createUser(env, 'no-titles@example.com');
+    const s = await runDiscovery(env.ctx, u.id);
+    expect(s).toMatchObject({ status: 'needs_titles' });
+  });
+});
+

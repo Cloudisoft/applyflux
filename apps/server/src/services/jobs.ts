@@ -14,7 +14,7 @@ import { AppError } from '../lib/errors';
 import type { SourcedJob } from './discovery';
 
 export interface JobInsert {
-  origin: 'source' | 'import' | 'extension';
+  origin: 'source' | 'import' | 'extension' | 'discovery';
   sourceId?: string | null;
   externalId?: string | null;
   url: string;

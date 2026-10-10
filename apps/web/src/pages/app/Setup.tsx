@@ -10,6 +10,7 @@ import type { Doc } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { ProfileForm } from './Profile';
 import { ParseReview, UploadZone } from './Resumes';
+import { DiscoveryPanel } from '@/components/discovery';
 import { toast } from 'sonner';
 
 const STEPS = [
@@ -194,22 +195,11 @@ function TestRunStep({ onNext }: { onNext: () => void }) {
 }
 
 function DiscoverStep({ onFinish }: { onFinish: () => void }) {
-  const [url, setUrl] = React.useState('');
-  const [added, setAdded] = React.useState<string[]>([]);
-  const add = useAction(async () => {
-    const s = await api.post<{ id: string; name: string }>('/sources', { url });
-    const r = await api.post<{ total: number }>(`/sources/${s.id}/sync`);
-    return { name: s.name, total: r.total };
-  }, { success: (r) => `${r.name}: ${r.total} jobs found`, invalidate: [qk.sources, ['jobs']], onSuccess: (r) => { setAdded((a) => [...a, `${r.name} (${r.total})`]); setUrl(''); } });
   return (
     <Card className="space-y-5 p-6">
-      <p className="text-muted">Follow companies you'd like to work for. Paste their careers board link — Greenhouse, Lever and Ashby boards are supported. You can also import individual jobs later.</p>
-      <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); add.mutate(undefined); }}>
-        <Input placeholder="https://jobs.lever.co/company" value={url} onChange={(e) => setUrl(e.target.value)} aria-label="Careers board URL" />
-        <Button type="submit" loading={add.isPending} disabled={!url}>Add</Button>
-      </form>
-      {!!added.length && <div className="flex flex-wrap gap-2">{added.map((a) => <Badge key={a} tone="success"><Check className="h-3 w-3" /> {a}</Badge>)}</div>}
-      <div className="flex justify-end gap-2"><Link to="/app" className={buttonVariants({ variant: 'ghost' })}>Go to dashboard</Link><Button onClick={onFinish}>Finish setup</Button></div>
+      <p className="text-muted">ApplyFlux now searches company career sites and public job boards for roles that match your profile, keeps only recent postings, and queues the best matches for Auto Apply. Nothing to set up: it repeats on its own.</p>
+      <DiscoveryPanel compact />
+      <div className="flex justify-end gap-2"><Link to="/app/jobs" className={buttonVariants({ variant: 'ghost' })}>See the jobs</Link><Button onClick={onFinish}>Finish setup</Button></div>
     </Card>
   );
 }

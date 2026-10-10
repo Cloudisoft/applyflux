@@ -9,3 +9,4 @@ export * from './profile';
 export * from './normalize';
 export { classifyLiveness, BOT_CHALLENGE_PATTERNS } from './vendor/liveness-core';
 export type { LivenessInput, LivenessResult } from './vendor/liveness-core';
+export * from './discovery';

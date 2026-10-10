@@ -6,6 +6,8 @@
  */
 import {
   challengeBlocking,
+  challengeBlocksFilling,
+  formUsable,
   challengeResolved,
   collectSubmissionEvidence,
   detectAuthWall,
@@ -84,8 +86,21 @@ async function waitForVerification(ctx: RunContext, resumePhase: 'filling' | 'su
   }
 }
 
-async function handleBlockers(ctx: RunContext, pass: PassResult): Promise<'continue' | 'stop'> {
-  if (challengeBlocking(pass.challenge)) {
+/** Many checks (Cloudflare's "Just a moment", Turnstile, invisible reCAPTCHA) pass on their own in a few seconds. */
+async function clearsOnItsOwn(engine: EngineContext): Promise<boolean> {
+  for (let i = 0; i < 10; i++) {
+    await sleep(1000);
+    checkControl();
+    const form = engine.adapter.findForm(document);
+    const c = detectChallenge(document);
+    if (!challengeBlocksFilling(c, !!form && formUsable(form))) return true;
+  }
+  return false;
+}
+
+async function handleBlockers(ctx: RunContext, pass: PassResult, engine?: EngineContext): Promise<'continue' | 'stop'> {
+  if (pass.blockedByChallenge && engine && (await clearsOnItsOwn(engine))) return 'continue';
+  if (pass.blockedByChallenge) {
     await report(ctx, { type: 'intervention', data: { intervention: 'captcha', message: `${pass.challenge.provider === 'interstitial' ? 'A security check' : 'A verification challenge'} appeared. Please complete it in this tab.`, fields: toReported(pass.results), stepState: { url: location.href }, pageUrl: location.href } });
     await waitForVerification(ctx);
     return 'continue';
@@ -99,8 +114,8 @@ async function handleBlockers(ctx: RunContext, pass: PassResult): Promise<'conti
 
 async function fillCurrentStep(ctx: RunContext, engine: EngineContext): Promise<PassResult | null> {
   let pass = await runPass(document, engine);
-  if ((await handleBlockers(ctx, pass)) === 'stop') return null;
-  if (challengeBlocking(pass.challenge)) return fillCurrentStep(ctx, engine);
+  if ((await handleBlockers(ctx, pass, engine)) === 'stop') return null;
+  if (pass.blockedByChallenge) return fillCurrentStep(ctx, engine);
   if (!pass.formFound) return pass;
   if (pass.pendingQuestions.length) {
     const answers = await send<ResolvedAnswer[]>({ type: 'af:answers', applicationId: ctx.applicationId, questions: questionsPayload(pass.pendingQuestions) }).catch((e) => {
@@ -117,6 +132,11 @@ async function fillCurrentStep(ctx: RunContext, engine: EngineContext): Promise<
 
 async function submitAndVerify(ctx: RunContext, engine: EngineContext) {
   const adapter = engine.adapter;
+  // A visible "I'm not a robot" checkbox: everything else is filled, so ask the person to tick it, then submit.
+  if (challengeBlocking(detectChallenge(document))) {
+    await report(ctx, { type: 'intervention', data: { intervention: 'captcha', message: 'The form is filled. Please tick the verification checkbox in this tab and ApplyFlux will submit.', pageUrl: location.href } });
+    await waitForVerification(ctx, 'filling');
+  }
   await phase(ctx, 'submitting');
   await report(ctx, { type: 'submit_attempted', data: { pageUrl: location.href } });
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -193,7 +213,7 @@ async function run(ctx: RunContext) {
   }
   if (!adapter.findForm(document)) {
     const pass = await runPass(document, engine);
-    if ((await handleBlockers(ctx, pass)) === 'stop') return;
+    if ((await handleBlockers(ctx, pass, engine)) === 'stop') return;
     if (!adapter.findForm(document)) {
       await report(ctx, { type: 'intervention', data: { intervention: 'unexpected_form', message: 'ApplyFlux could not find an application form on this page.', pageUrl: location.href } });
       return;

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { AlertCircle, BadgeCheck, Briefcase, CircleAlert, GraduationCap, Medal, Pencil, Plus, Trash2, FolderGit2, ShieldCheck } from 'lucide-react';
-import type { CandidateProfileData, WorkAuthorization } from '@applyflux/shared';
-import { Badge, Button, Card, CardHeader, Dialog, ErrorState, Field, Input, PageHeader, Progress, Select, Skeleton, TagInput, Textarea, Tip } from '@/components/ui';
+import { ScreeningAnswers, type CandidateProfileData, type WorkAuthorization } from '@applyflux/shared';
+import { Badge, Button, Card, CardHeader, Dialog, ErrorState, Field, Input, PageHeader, Progress, Select, Skeleton, Switch, TagInput, Textarea, Tip } from '@/components/ui';
 import { api } from '@/lib/api';
 import { qk, useAction, useProfile } from '@/lib/queries';
 import type { ProfileResponse } from '@/lib/types';
@@ -151,8 +151,10 @@ export function ProfileForm({ profile, sections = ['personal', 'links', 'profess
           </div>
         </Card>
       )}
-      <div className="sticky bottom-4 z-10 flex justify-end">
-        <Button type="submit" loading={save.isPending} className={cn(!dirty.size && !onSaved && 'opacity-70')}>
+      {/* With unsaved edits the save bar follows the screen; otherwise it sits quietly below the form. */}
+      <div className={cn('flex items-center justify-end gap-3', dirty.size > 0 && 'sticky bottom-3 z-10 rounded-2xl border border-line bg-surface/95 p-3 shadow-lg backdrop-blur')}>
+        {dirty.size > 0 && <span className="mr-auto text-sm text-muted">Unsaved changes</span>}
+        <Button type="submit" loading={save.isPending} disabled={!dirty.size && !onSaved}>
           {submitLabel}
         </Button>
       </div>
@@ -345,6 +347,71 @@ export function AssessmentPanel({ data }: { data: ProfileResponse }) {
   );
 }
 
+type Screening = ReturnType<typeof ScreeningAnswers.parse>;
+const YES_NO: Array<[keyof Screening, string]> = [
+  ['over18', 'Are you 18 or older?'],
+  ['willingOnsite', 'Willing to work on-site / commute when the role requires it?'],
+  ['backgroundCheck', 'Willing to undergo a background check?'],
+  ['drugTest', 'Willing to take a drug test?'],
+  ['driversLicense', "Do you have a valid driver's licence?"],
+  ['felonyConviction', 'Have you ever been convicted of a felony?'],
+];
+
+/** Common screening questions answered once, so Auto Apply never has to stop and ask. */
+export function ScreeningCard({ value }: { value: Screening | undefined }) {
+  const [s, setS] = React.useState<Screening>(() => ScreeningAnswers.parse(value ?? {}));
+  const [dirty, setDirty] = React.useState(false);
+  const set = (patch: Partial<Screening>) => { setS((p) => ({ ...p, ...patch })); setDirty(true); };
+  const save = useAction(() => api.patch('/profile', { screening: s }), { success: 'Application answers saved', invalidate: [qk.profile], onSuccess: () => setDirty(false) });
+  const yn = (k: keyof Screening) => (s[k] === true ? 'yes' : s[k] === false ? 'no' : '');
+  return (
+    <Card>
+      <CardHeader title="Application questions" description="Answer the questions most forms ask, once. ApplyFlux reuses these on every application so Auto Apply doesn't stop to ask you." />
+      <div className="grid gap-5 p-5 sm:grid-cols-2">
+        {YES_NO.map(([k, label]) => (
+          <Field key={k} label={label} htmlFor={`sc-${k}`}>
+            <Select id={`sc-${k}`} value={yn(k)} onChange={(e) => set({ [k]: e.target.value === '' ? null : e.target.value === 'yes' } as Partial<Screening>)}>
+              <option value="">Ask me when a form needs it</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </Select>
+          </Field>
+        ))}
+        <Field label="How you usually find jobs" htmlFor="sc-ref" hint='Used for "How did you hear about us?"'>
+          <Input id="sc-ref" placeholder="Online job board" value={s.referralSource ?? ''} onChange={(e) => set({ referralSource: e.target.value || null })} />
+        </Field>
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-line p-3">
+          <div><div className="text-sm font-medium">Accept standard acknowledgements</div><div className="text-xs text-muted">Tick "I have read the privacy notice" and "I certify my answers are accurate" boxes for you.</div></div>
+          <Switch checked={s.acceptConsents} onCheckedChange={(v) => set({ acceptConsents: v })} label="Accept standard acknowledgements" />
+        </div>
+        <Field label="Voluntary self-identification (gender, ethnicity, veteran, disability)" htmlFor="sc-eeo" className="sm:col-span-2" hint="These questions are optional by law. By default ApplyFlux picks the form's own 'prefer not to say' answer.">
+          <Select id="sc-eeo" value={s.eeo} onChange={(e) => set({ eeo: e.target.value as Screening['eeo'] })}>
+            <option value="decline">Decline to self-identify (recommended default)</option>
+            <option value="answer">Answer with the details below</option>
+          </Select>
+        </Field>
+        {s.eeo === 'answer' && (
+          <>
+            {([['gender', 'Gender'], ['raceEthnicity', 'Race / ethnicity'], ['veteranStatus', 'Veteran status'], ['disabilityStatus', 'Disability status'], ['pronouns', 'Pronouns']] as Array<[keyof Screening, string]>).map(([k, label]) => (
+              <Field key={k} label={label} htmlFor={`sc-${k}`} hint="Leave blank to decline this one.">
+                <Input id={`sc-${k}`} value={(s[k] as string | null) ?? ''} onChange={(e) => set({ [k]: e.target.value || null } as Partial<Screening>)} />
+              </Field>
+            ))}
+            <Field label="Hispanic or Latino?" htmlFor="sc-hisp">
+              <Select id="sc-hisp" value={yn('hispanicLatino')} onChange={(e) => set({ hispanicLatino: e.target.value === '' ? null : e.target.value === 'yes' })}>
+                <option value="">Decline</option><option value="yes">Yes</option><option value="no">No</option>
+              </Select>
+            </Field>
+          </>
+        )}
+      </div>
+      <div className="flex justify-end border-t border-line p-4">
+        <Button loading={save.isPending} disabled={!dirty} onClick={() => save.mutate(undefined)}>Save answers</Button>
+      </div>
+    </Card>
+  );
+}
+
 export function ProfilePage() {
   const { data, isLoading, error, refetch } = useProfile();
   if (error) return <ErrorState error={error} onRetry={refetch} />;
@@ -357,6 +424,7 @@ export function ProfilePage() {
         <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
           <div className="space-y-6">
             <ProfileForm profile={data.profile} />
+            <ScreeningCard value={(data.profile as { screening?: Screening }).screening} />
             <HistorySection section="experiences" items={data.experiences as never} />
             <HistorySection section="educations" items={data.educations as never} />
             <HistorySection section="certifications" items={data.certifications as never} />

@@ -96,7 +96,7 @@ export async function transition(
 /* Queueing                                                            */
 /* ------------------------------------------------------------------ */
 
-export async function enqueueJobs(db: Db, userId: string, jobIds: string[], opts: { resumeDocumentId?: string | null; priority?: number } = {}) {
+export async function enqueueJobs(db: Db, userId: string, jobIds: string[], opts: { resumeDocumentId?: string | null; priority?: number; actor?: 'user' | 'system' } = {}) {
   const results: Array<{ jobId: string; applicationId?: string; status: 'queued' | 'already' | 'skipped'; reason?: string }> = [];
   const prefs = await one<Record<string, any>>(db, 'select * from automation_preferences where user_id = $1', [userId]);
   for (const jobId of jobIds) {
@@ -126,8 +126,8 @@ export async function enqueueJobs(db: Db, userId: string, jobIds: string[], opts
       const a = await lockApplication(c, userId, (await one<{ id: string }>(c, 'select id from applications where user_id=$1 and job_id=$2', [userId, jobId]))!.id);
       if (!['DISCOVERED', 'SHORTLISTED', 'SKIPPED', 'FAILED'].includes(a.state)) return results.push({ jobId, applicationId: a.id, status: 'already', reason: `Already ${a.state.toLowerCase().replace(/_/g, ' ')}` });
       if (a.state === 'FAILED' && a.submit_attempted_at) return results.push({ jobId, applicationId: a.id, status: 'skipped', reason: 'A submission was already attempted; check it manually' });
-      await transition(c, a, 'QUEUED', 'user', {
-        type: 'queued',
+      await transition(c, a, 'QUEUED', opts.actor ?? 'user', {
+        type: opts.actor === 'system' ? 'auto_queued' : 'queued',
         patch: { attempts: a.state === 'FAILED' ? 0 : a.attempts, ...(opts.resumeDocumentId ? { resume_document_id: opts.resumeDocumentId } : {}), priority: opts.priority ?? 0, last_error: null, intervention: null },
       });
       results.push({ jobId, applicationId: a.id, status: 'queued' });

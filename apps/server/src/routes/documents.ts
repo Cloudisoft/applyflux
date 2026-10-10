@@ -9,6 +9,7 @@ import { deleteDocument, getDocumentFile, listDocuments, storeDocument } from '.
 import { ExtractedResume, extractResume, MAX_UPLOAD_BYTES } from '../services/resume';
 import { insertSectionItem, loadFullProfile, updateProfile } from '../services/profile';
 import { refreshMatches } from '../services/jobs';
+import { runDiscovery } from '../services/autodiscover';
 import { audit } from '../services/notify';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } });
@@ -164,6 +165,8 @@ export function documentRoutes(ctx: AppContext) {
           meta.skills = { source: 'resume', verified: body.confirmedFields.includes('skills') };
         }
         if (e.languages.length && !current.profile.languages.length) patch.languages = e.languages;
+        // No target titles yet: start from the most recent role on the resume so job discovery can begin at once.
+        if (!current.profile.desiredTitles.length && e.experiences[0]?.title) patch.desiredTitles = [e.experiences[0].title];
         patch.fieldMeta = meta;
         await updateProfile(c, req.user.id, patch as never);
         if (body.replaceHistory) {
@@ -181,6 +184,7 @@ export function documentRoutes(ctx: AppContext) {
       });
       const full = await loadFullProfile(ctx.db, req.user.id);
       await refreshMatches(ctx.db, req.user.id, full);
+      void runDiscovery(ctx, req.user.id);
       res.json({ data: { ok: true } });
     }),
   );

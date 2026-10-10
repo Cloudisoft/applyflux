@@ -68,6 +68,8 @@ export function detectFields(doc: Document, opts: DetectOptions = {}): DetectedF
     const name = el.getAttribute('name') ?? '';
     const id = el.getAttribute('id') ?? '';
     if (CAPTCHA_FIELD.test(name) || CAPTCHA_FIELD.test(id)) continue;
+    // Never touch a verification widget's own controls.
+    if (el.closest('[data-applyflux-captcha], .g-recaptcha, .h-captcha, .cf-turnstile')) continue;
     if ((el as HTMLInputElement).disabled || (el as HTMLInputElement).readOnly) continue;
 
     let kind: FieldKind | null;

@@ -8,6 +8,7 @@ import type { AuthedRequest } from '../lib/auth';
 import { boardFromUrl, checkPostingLive, fetchBoard } from '../services/discovery';
 import { refreshMatches, searchJobs, upsertJob, upsertSourcedJobs } from '../services/jobs';
 import { loadFullProfile } from '../services/profile';
+import { discoveryRunning, runDiscovery } from '../services/autodiscover';
 import { shortlist } from '../services/queue';
 
 export function jobRoutes(ctx: AppContext) {
@@ -131,6 +132,41 @@ export function jobRoutes(ctx: AppContext) {
     '/sources/:id',
     ah<AuthedRequest>(async (req, res) => {
       await ctx.db.query('delete from job_sources where id=$1 and user_id=$2', [z.string().uuid().parse(req.params.id), req.user.id]);
+      res.json({ data: { ok: true } });
+    }),
+  );
+
+  /* Automatic discovery ---------------------------------------------- */
+
+  r.get(
+    '/discovery',
+    ah<AuthedRequest>(async (req, res) => {
+      const p = await one<{ auto_discover: boolean; auto_queue: boolean; last_discovered_at: string | null; last_discovery: unknown }>(
+        ctx.db,
+        'select auto_discover, auto_queue, last_discovered_at, last_discovery from automation_preferences where user_id=$1',
+        [req.user.id],
+      );
+      res.json({ data: { running: discoveryRunning(req.user.id), autoDiscover: p?.auto_discover ?? true, autoQueue: p?.auto_queue ?? true, lastRunAt: p?.last_discovered_at ?? null, last: p?.last_discovery ?? null, intervalHours: ctx.config.DISCOVERY_INTERVAL_HOURS } });
+    }),
+  );
+
+  /** "Find jobs now": runs in the background; poll GET /discovery for the result. */
+  r.post(
+    '/discovery/run',
+    ah<AuthedRequest>(async (req, res) => {
+      void runDiscovery(ctx, req.user.id);
+      res.status(202).json({ data: { running: true } });
+    }),
+  );
+
+  r.put(
+    '/discovery/settings',
+    ah<AuthedRequest>(async (req, res) => {
+      const b = z.object({ autoDiscover: z.boolean().optional(), autoQueue: z.boolean().optional() }).parse(req.body);
+      await ctx.db.query(
+        'update automation_preferences set auto_discover = coalesce($2, auto_discover), auto_queue = coalesce($3, auto_queue) where user_id=$1',
+        [req.user.id, b.autoDiscover ?? null, b.autoQueue ?? null],
+      );
       res.json({ data: { ok: true } });
     }),
   );

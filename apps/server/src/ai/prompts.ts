@@ -45,16 +45,23 @@ Schema: {"firstName":string|null,"lastName":string|null,"email":string|null,"pho
 export function answerPrompt(
   facts: string,
   job: { title: string; company: string; description: string | null },
-  questions: Array<{ key: string; label: string; options?: string[]; maxLength?: number }>,
+  questions: Array<{ key: string; label: string; kind?: string; options?: string[]; maxLength?: number }>,
 ): ChatMessage[] {
+  // The form's own field type decides the answer's shape: a paragraph box gets a real paragraph, a one-line box a short answer.
+  const format = (kind?: string) =>
+    kind === 'textarea' ? 'long: 60-180 words, first person, specific to this role'
+    : kind === 'number' ? 'a number only'
+    : kind === 'date' ? 'a date as YYYY-MM-DD'
+    : kind === 'email' || kind === 'tel' || kind === 'url' ? 'the exact value only'
+    : 'short: a few words or one sentence';
   const qs = questions
-    .map((q) => `- key: ${JSON.stringify(q.key)}\n  ${wrap('question', q.label, 600)}${q.options?.length ? `\n  options: ${JSON.stringify(q.options.slice(0, 50))}` : ''}${q.maxLength ? `\n  maxLength: ${q.maxLength}` : ''}`)
+    .map((q) => `- key: ${JSON.stringify(q.key)}\n  ${wrap('question', q.label, 600)}${q.options?.length ? `\n  options: ${JSON.stringify(q.options.slice(0, 50))}` : `\n  format: ${format(q.kind)}`}${q.maxLength ? `\n  maxLength: ${q.maxLength}` : ''}`)
     .join('\n');
   return [
     { role: 'system', content: GUARDRAILS },
     {
       role: 'user',
-      content: `${factsBlock(facts)}\n\n${jobBlock(job)}\n\nAnswer each application question for the candidate. When options are given, the answer MUST be one option copied exactly. Keep free-text answers under 120 words unless maxLength says otherwise.
+      content: `${factsBlock(facts)}\n\n${jobBlock(job)}\n\nAnswer each application question for the candidate. When options are given, the answer MUST be one option copied exactly; pick the option the facts best support. Otherwise follow each question's format (long answers are full, natural paragraphs; short answers are brief) and stay within maxLength. Motivation questions (why this company/role, tell us about yourself) are answerable: connect real experience from the facts to the job. Mark supported:false only when an honest answer needs a fact that is missing.
 Return JSON: {"answers":[{"key":string,"answer":string|null,"supported":boolean /* false if facts do not support an answer */,"confidence":number /* 0..1 */,"factsUsed":string[]}]}
 
 Questions:

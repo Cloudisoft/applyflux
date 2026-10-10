@@ -109,7 +109,7 @@ test('authenticated app screens render from the API', async () => {
   await expect(page.getByText('Timeline')).toBeVisible();
   await shot(page, '13-application-drawer');
   await visit('/app/jobs', '14-jobs', 'Lead Product Designer');
-  await page.getByText('Lead Product Designer').first().click();
+  await page.getByRole('link', { name: /Lead Product Designer/ }).first().click();
   await expect(page.getByText('Why this score')).toBeVisible();
   await expect(page.getByText('Matching skills')).toBeVisible();
   await shot(page, '15-job-detail');

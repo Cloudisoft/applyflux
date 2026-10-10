@@ -104,10 +104,11 @@ const iso = (v: unknown) => {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 };
 
-export async function fetchBoard(kind: SourceKind, identifier: string, companyName: string, fetchJson: FetchJson): Promise<SourcedJob[]> {
+/** `withContent: false` skips Greenhouse descriptions (much smaller); fetch them per job with greenhouseDescription(). */
+export async function fetchBoard(kind: SourceKind, identifier: string, companyName: string, fetchJson: FetchJson, opts: { withContent?: boolean } = {}): Promise<SourcedJob[]> {
   if (!SLUG.test(identifier)) throw new Error('Invalid board identifier');
   if (kind === 'greenhouse') {
-    const url = assertHost(kind, `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(identifier)}/jobs?content=true`);
+    const url = assertHost(kind, `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(identifier)}/jobs${opts.withContent === false ? '' : '?content=true'}`);
     const { status, json } = await fetchJson(url);
     if (status === 404) throw new Error(`Greenhouse board "${identifier}" not found`);
     if (status !== 200) throw new Error(`Greenhouse returned HTTP ${status}`);
@@ -183,6 +184,165 @@ export async function fetchBoard(kind: SourceKind, identifier: string, companyNa
         postedAt: iso(j.publishedAt),
       };
     });
+}
+
+/** One Greenhouse posting's description (used after filtering, so only matching jobs are downloaded in full). */
+export async function greenhouseDescription(identifier: string, jobId: string, fetchJson: FetchJson): Promise<string | null> {
+  if (!SLUG.test(identifier) || !/^\d{1,20}$/.test(jobId)) return null;
+  const url = assertHost('greenhouse', `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(identifier)}/jobs/${jobId}`);
+  const { status, json } = await fetchJson(url);
+  if (status !== 200) return null;
+  return htmlToText((json as { content?: string })?.content) || null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Public job feeds (aggregators). Ported from career-ops providers   */
+/* (remotive, remoteok, arbeitnow, himalayas, themuse; MIT).           */
+/* ------------------------------------------------------------------ */
+
+export type FeedId = 'remotive' | 'remoteok' | 'arbeitnow' | 'himalayas' | 'themuse' | 'adzuna';
+const FEED_HOSTS: Record<FeedId, string> = {
+  remotive: 'remotive.com',
+  remoteok: 'remoteok.com',
+  arbeitnow: 'www.arbeitnow.com',
+  himalayas: 'himalayas.app',
+  themuse: 'www.themuse.com',
+  adzuna: 'api.adzuna.com',
+};
+function feedUrl(id: FeedId, url: string) {
+  const u = new URL(url);
+  if (u.protocol !== 'https:' || u.hostname !== FEED_HOSTS[id]) throw new Error(`${id}: refusing untrusted host ${u.hostname}`);
+  return url;
+}
+const httpsUrl = (v: unknown): string | null => {
+  if (typeof v !== 'string') return null;
+  try {
+    const u = new URL(v.trim());
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : null;
+  } catch {
+    return null;
+  }
+};
+const epoch = (v: unknown) => {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return iso(v);
+  return new Date(n < 1e12 ? n * 1000 : n).toISOString();
+};
+const num = (v: unknown) => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+};
+const textOf = (v: unknown, max = 20000) => (typeof v === 'string' ? htmlToText(v).slice(0, max) || null : null);
+
+/** The Muse categories, matched against the person's target titles. */
+const MUSE_CATEGORIES: Array<[RegExp, string]> = [
+  [/engineer|developer|software|devops|sre|programmer/i, 'Software Engineering'],
+  [/data|analyst|analytics|scientist|machine learning|\bml\b|\bai\b/i, 'Data and Analytics'],
+  [/design|ux|ui\b/i, 'Design and UX'],
+  [/product manager|product owner/i, 'Product Management'],
+  [/project|program manager|scrum/i, 'Project Management'],
+  [/sales|account (executive|manager)|business development/i, 'Sales'],
+  [/marketing|growth|seo|content/i, 'Marketing'],
+  [/customer|support|success/i, 'Customer Service'],
+  [/nurse|clinical|medical|health|physician|therap/i, 'Healthcare'],
+  [/teacher|education|tutor|instructor/i, 'Education'],
+  [/account|finance|financial|audit|tax|controller/i, 'Accounting and Finance'],
+  [/recruit|talent|hr\b|human resources|people/i, 'Human Resources and Recruitment'],
+  [/admin|assistant|office|reception/i, 'Administration and Office'],
+  [/writer|editor|journalist|copy/i, 'Writing and Editing'],
+  [/legal|lawyer|attorney|paralegal|counsel/i, 'Legal Services'],
+];
+
+const ADZUNA_COUNTRIES: Record<string, string> = {
+  'united states': 'us', usa: 'us', us: 'us', 'united kingdom': 'gb', uk: 'gb', canada: 'ca', india: 'in', australia: 'au', germany: 'de',
+  france: 'fr', netherlands: 'nl', spain: 'es', italy: 'it', poland: 'pl', brazil: 'br', mexico: 'mx', singapore: 'sg', 'new zealand': 'nz',
+  austria: 'at', belgium: 'be', switzerland: 'ch', 'south africa': 'za',
+};
+
+/**
+ * Fetch recent postings from one public feed. `titles` narrows feeds that support search; the
+ * caller filters everything by title, location and recency afterwards.
+ */
+export async function fetchFeed(
+  id: FeedId,
+  ctx: { titles: string[]; country: string | null; city: string | null; fetchJson: FetchJson; adzuna?: { appId: string; appKey: string } | null },
+): Promise<SourcedJob[]> {
+  const { fetchJson } = ctx;
+  const get = async (url: string) => {
+    const r = await fetchJson(feedUrl(id, url));
+    if (r.status !== 200) throw new Error(`${id} returned HTTP ${r.status}`);
+    return r.json as any;
+  };
+  const out: SourcedJob[] = [];
+  const push = (j: { [K in keyof SourcedJob]?: SourcedJob[K] | null } & { url: string | null; title: string; company: string }) => {
+    if (!j.url || !j.title) return;
+    out.push({
+      externalId: j.externalId ?? j.url,
+      url: j.url,
+      title: j.title.trim().slice(0, 300),
+      company: (j.company || 'Unknown company').trim().slice(0, 200),
+      location: j.location?.trim() || null,
+      workplaceType: j.workplaceType ?? workplace(j.location ?? ''),
+      employmentType: j.employmentType ?? null,
+      description: j.description ?? null,
+      salaryMin: j.salaryMin ?? null,
+      salaryMax: j.salaryMax ?? null,
+      salaryCurrency: j.salaryCurrency ?? null,
+      postedAt: j.postedAt ?? null,
+    });
+  };
+
+  if (id === 'remotive') {
+    const json = await get('https://remotive.com/api/remote-jobs');
+    for (const j of (json?.jobs ?? []) as Array<Record<string, any>>)
+      push({ externalId: `remotive:${j.id}`, url: httpsUrl(j.url), title: j.title, company: j.company_name, location: j.candidate_required_location ? `Remote (${j.candidate_required_location})` : 'Remote', workplaceType: 'remote', employmentType: employment(j.job_type), description: textOf(j.description), postedAt: iso(j.publication_date) });
+  } else if (id === 'remoteok') {
+    const json = await get('https://remoteok.com/api');
+    for (const j of (Array.isArray(json) ? json : []) as Array<Record<string, any>>) {
+      if (!j?.position) continue;
+      push({ externalId: `remoteok:${j.id}`, url: httpsUrl(j.apply_url) ?? httpsUrl(j.url), title: j.position, company: j.company, location: j.location ? `Remote (${j.location})` : 'Remote', workplaceType: 'remote', description: textOf(j.description), salaryMin: num(j.salary_min), salaryMax: num(j.salary_max), salaryCurrency: num(j.salary_min) ? 'USD' : null, postedAt: epoch(j.epoch) ?? iso(j.date) });
+    }
+  } else if (id === 'arbeitnow') {
+    for (let page = 1; page <= 2; page++) {
+      const json = await get(`https://www.arbeitnow.com/api/job-board-api?page=${page}`);
+      for (const j of (json?.data ?? []) as Array<Record<string, any>>)
+        push({ externalId: `arbeitnow:${j.slug}`, url: httpsUrl(j.url), title: j.title, company: j.company_name, location: [j.location, j.remote ? 'Remote' : ''].filter(Boolean).join(' · '), workplaceType: j.remote ? 'remote' : null, description: textOf(j.description), postedAt: epoch(j.created_at) });
+    }
+  } else if (id === 'himalayas') {
+    for (const t of ctx.titles.slice(0, 4)) {
+      const json = await get(`https://himalayas.app/jobs/api/search?q=${encodeURIComponent(t)}&sort=recent`);
+      for (const j of (json?.jobs ?? []) as Array<Record<string, any>>) {
+        const regions = Array.isArray(j.locationRestrictions) ? j.locationRestrictions.join(', ') : '';
+        push({ externalId: `himalayas:${j.guid}`, url: httpsUrl(j.applicationLink) ?? httpsUrl(j.guid), title: j.title, company: j.companyName, location: regions ? `Remote (${regions})` : 'Remote', workplaceType: 'remote', employmentType: employment(j.employmentType), description: textOf(j.description), salaryMin: num(j.minSalary), salaryMax: num(j.maxSalary), salaryCurrency: typeof j.currency === 'string' ? j.currency.slice(0, 3) : null, postedAt: epoch(j.pubDate) });
+      }
+    }
+  } else if (id === 'themuse') {
+    const cats = [...new Set(ctx.titles.flatMap((t) => MUSE_CATEGORIES.filter(([re]) => re.test(t)).map(([, c]) => c)))].slice(0, 3);
+    for (const c of cats) {
+      for (let page = 1; page <= 2; page++) {
+        const json = await get(`https://www.themuse.com/api/public/jobs?page=${page}&descending=true&category=${encodeURIComponent(c)}`);
+        for (const j of (json?.results ?? []) as Array<Record<string, any>>) {
+          const locs = Array.isArray(j.locations) ? j.locations.map((l: any) => l?.name).filter(Boolean).join('; ') : '';
+          push({ externalId: `themuse:${j.id}`, url: httpsUrl(j.refs?.landing_page), title: j.name, company: j.company?.name, location: locs, workplaceType: /flexible|remote/i.test(locs) ? 'remote' : null, description: textOf(j.contents), postedAt: iso(j.publication_date) });
+        }
+      }
+    }
+  } else if (id === 'adzuna') {
+    // Broad, many-country search engine. Optional: needs ADZUNA_APP_ID / ADZUNA_APP_KEY (free at developer.adzuna.com).
+    if (!ctx.adzuna) return [];
+    const cc = ADZUNA_COUNTRIES[normalizeCountry(ctx.country)] ?? 'us';
+    for (const t of ctx.titles.slice(0, 4)) {
+      const where = ctx.city ? `&where=${encodeURIComponent(ctx.city)}` : '';
+      const json = await get(`https://api.adzuna.com/v1/api/jobs/${cc}/search/1?app_id=${encodeURIComponent(ctx.adzuna.appId)}&app_key=${encodeURIComponent(ctx.adzuna.appKey)}&results_per_page=50&max_days_old=21&sort_by=date&what=${encodeURIComponent(t)}${where}&content-type=application/json`);
+      for (const j of (json?.results ?? []) as Array<Record<string, any>>)
+        push({ externalId: `adzuna:${j.id}`, url: httpsUrl(j.redirect_url), title: htmlToText(j.title), company: j.company?.display_name, location: j.location?.display_name ?? null, employmentType: employment(j.contract_time), description: textOf(j.description), salaryMin: num(j.salary_min), salaryMax: num(j.salary_max), postedAt: iso(j.created) });
+    }
+  }
+  return out;
+}
+
+function normalizeCountry(c: string | null): string {
+  return (c ?? '').toLowerCase().replace(/[^a-z ]/g, '').trim();
 }
 
 /** Identify a board from a careers URL the person pasted. */

@@ -23,6 +23,11 @@ import {
   CandidateProfileInput,
   type FullCandidateProfile,
   type AutofillProfile,
+  ScreeningAnswers,
+  titleFit,
+  titleKeywords,
+  locationFits,
+  isRecent,
 } from '../src';
 
 describe('state machine', () => {
@@ -138,6 +143,7 @@ const autofill = (over: Partial<AutofillProfile> = {}): AutofillProfile => ({
   ],
   noticePeriod: '4 weeks', availableFrom: null, desiredSalaryMin: 90000, desiredSalaryMax: null, salaryCurrency: 'GBP',
   willingToRelocate: null, experiences: [], educations: [],
+  screening: ScreeningAnswers.parse({}),
   verifiedKeys: ['firstName', 'lastName', 'workAuthorizations', 'yearsExperience', 'noticePeriod', 'desiredSalaryMin'],
   ...over,
 });
@@ -238,5 +244,62 @@ describe('liveness (ported from career-ops)', () => {
   });
   it('apply control means active', () => {
     expect(classifyLiveness({ status: 200, bodyText: 'x'.repeat(400), applyControls: ['Apply for this job'] }).result).toBe('active');
+  });
+});
+
+describe('automatic discovery filters', () => {
+  it('matches target titles by core keywords and common synonyms', () => {
+    const targets = ['Senior Frontend Engineer'];
+    expect(titleFit('Frontend Engineer II', targets)).toBeGreaterThan(0.9);
+    expect(titleFit('Front-End Developer', targets)).toBeGreaterThan(0.5);
+    expect(titleFit('Staff Software Engineer, Web (React)', targets)).toBeGreaterThan(0);
+    expect(titleFit('Backend Engineer', targets)).toBe(0);
+    expect(titleFit('Account Executive', ['Software Engineer'])).toBe(0);
+    expect(titleKeywords('Sr. Product Manager II')).toEqual(['product', 'manager']);
+  });
+  it('respects remote and location preferences, and explicit remote regions', () => {
+    const us = { workplaceTypes: ['remote'], desiredLocations: [], city: 'Austin', country: 'United States' };
+    expect(locationFits({ location: 'Remote', workplaceType: 'remote' }, us)).toBe(true);
+    expect(locationFits({ location: 'Remote (US only)', workplaceType: 'remote' }, us)).toBe(true);
+    expect(locationFits({ location: 'Remote - Europe', workplaceType: 'remote' }, us)).toBe(false);
+    expect(locationFits({ location: 'Berlin, Germany', workplaceType: null }, us)).toBe(false); // office job, remote only
+    const office = { workplaceTypes: ['onsite', 'hybrid'], desiredLocations: ['London'], city: null, country: 'United Kingdom' };
+    expect(locationFits({ location: 'London, UK', workplaceType: 'hybrid' }, office)).toBe(true);
+    expect(locationFits({ location: 'Manchester, United Kingdom', workplaceType: null }, office)).toBe(true);
+    expect(locationFits({ location: 'New York, NY', workplaceType: null }, office)).toBe(false);
+    expect(locationFits({ location: 'Remote', workplaceType: 'remote' }, office)).toBe(false);
+  });
+  it('keeps only recent postings', () => {
+    const now = Date.parse('2026-10-10T00:00:00Z');
+    expect(isRecent('2026-10-01T00:00:00Z', 21, now)).toBe(true);
+    expect(isRecent('2026-08-01T00:00:00Z', 21, now)).toBe(false);
+    expect(isRecent(null, 21, now)).toBe(true);
+  });
+});
+
+describe('screening answers from the profile', () => {
+  const withScreening = (s: Partial<ScreeningAnswers>) => autofill({ screening: ScreeningAnswers.parse(s) });
+  it('declines voluntary self-identification by default, picking the form\'s own wording', () => {
+    const p = withScreening({});
+    expect(answerFromProfile('Gender', ['Male', 'Female', 'Decline To Self Identify'], p).answer).toBe('Decline To Self Identify');
+    expect(answerFromProfile('Veteran Status', ['I am not a protected veteran', 'I identify as one or more of the classifications of protected veteran', "I don't wish to answer"], p).answer).toBe("I don't wish to answer");
+    expect(answerFromProfile('Are you Hispanic/Latino?', ['Yes', 'No', 'Prefer not to say'], p).answer).toBe('Prefer not to say');
+  });
+  it('uses answers the person chose to give', () => {
+    const p = withScreening({ eeo: 'answer', gender: 'Female', over18: true, backgroundCheck: true, referralSource: 'LinkedIn' });
+    expect(answerFromProfile('Gender', ['Male', 'Female', 'Decline To Self Identify'], p).answer).toBe('Female');
+    expect(answerFromProfile('Are you at least 18 years of age?', ['Yes', 'No'], p).answer).toBe('Yes');
+    expect(answerFromProfile('Are you willing to undergo a background check?', ['Yes', 'No'], p).answer).toBe('Yes');
+    expect(answerFromProfile('How did you hear about us?', ['Company website', 'LinkedIn', 'Referral'], p).answer).toBe('LinkedIn');
+    expect(answerFromProfile('How did you hear about this job?', undefined, p).answer).toBe('LinkedIn');
+  });
+  it('only ticks consent boxes when the person allowed it, and never guesses unset facts', () => {
+    expect(answerFromProfile('I acknowledge the privacy notice', undefined, withScreening({})).needsUser).toBe(true);
+    expect(answerFromProfile('I acknowledge the privacy notice', undefined, withScreening({ acceptConsents: true })).answer).toBe('Yes');
+    expect(answerFromProfile('Have you ever been convicted of a felony?', ['Yes', 'No'], withScreening({})).needsUser).toBe(true);
+  });
+  it('picks the salary option containing the expectation', () => {
+    const p = autofill({ desiredSalaryMin: 95000 });
+    expect(answerFromProfile('Desired salary range', ['$50,000 - $80,000', '$80,000 - $100,000', '$100k+'], p).answer).toBe('$80,000 - $100,000');
   });
 });

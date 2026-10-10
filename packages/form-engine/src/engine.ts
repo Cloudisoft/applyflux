@@ -1,7 +1,7 @@
 import type { AutofillProfile, AutomationMode, ReportedField, ResolvedAnswer } from '@applyflux/shared';
 import { classifyQuestion, isSensitive, questionKey } from '@applyflux/shared';
 import type { PlatformAdapter } from './adapters';
-import { challengeBlocking, detectAuthWall, detectChallenge, type ChallengeState, type WallKind } from './challenge';
+import { challengeBlocksFilling, detectAuthWall, detectChallenge, type ChallengeState, type WallKind } from './challenge';
 import { detectFields } from './detect';
 import { isVisible } from './dom';
 import { attachFile, fillField } from './fill';
@@ -23,6 +23,8 @@ export interface EngineContext {
 export interface PassResult {
   adapterId: string;
   challenge: ChallengeState;
+  /** The challenge stops filling (open challenge, interstitial, or a checkbox that locks the form). */
+  blockedByChallenge: boolean;
   authWall: WallKind;
   formFound: boolean;
   results: FieldResult[];
@@ -38,6 +40,12 @@ export interface PassResult {
 
 const OPTION_KINDS = new Set(['select', 'radio', 'combobox', 'checkbox_group']);
 
+/** The form shows at least one field a person could fill (it is not locked behind a verification checkbox). */
+export function formUsable(form: Element): boolean {
+  const fields = Array.from(form.querySelectorAll('input:not([type=hidden]):not([type=submit]):not([type=button]), select, textarea'));
+  return fields.some((f) => isVisible(f) && !f.closest('[data-applyflux-captcha], .g-recaptcha, .h-captcha, .cf-turnstile'));
+}
+
 function isEmpty(f: DetectedField): boolean {
   if (f.kind === 'checkbox') return f.currentValue !== 'true';
   return !f.currentValue || /^(select|choose|please select|--)/i.test(f.currentValue);
@@ -49,9 +57,11 @@ export async function runPass(doc: Document, ctx: EngineContext): Promise<PassRe
   const challenge = detectChallenge(doc);
   const authWall = detectAuthWall(doc);
   const form = adapter.findForm(doc);
+  const blockedByChallenge = challengeBlocksFilling(challenge, !!form && formUsable(form));
   const base: PassResult = {
     adapterId: adapter.id,
     challenge,
+    blockedByChallenge,
     authWall,
     formFound: !!form,
     results: [],
@@ -62,7 +72,7 @@ export async function runPass(doc: Document, ctx: EngineContext): Promise<PassRe
     hasSubmit: false,
   };
   // Never type into a page that is asking for a human.
-  if (challengeBlocking(challenge) || authWall || !form) return base;
+  if (blockedByChallenge || authWall || !form) return base;
 
   const fields = detectFields(doc, { root: form, groupSelectors: adapter.groupSelectors });
   const saved = new Map(ctx.savedAnswers.map((a) => [a.questionKey, a]));
@@ -156,12 +166,16 @@ export async function runPass(doc: Document, ctx: EngineContext): Promise<PassRe
     }
     const lowConfidence = resolved.confidence < (OPTION_KINDS.has(field.kind) ? 0.85 : 0.7);
     const isDraft = resolved.source === 'ai';
-    if (ctx.mode === 'auto' && (lowConfidence || (isDraft && OPTION_KINDS.has(field.kind)))) {
+    if (ctx.mode === 'auto' && lowConfidence) {
       res.status = field.required ? 'needs_input' : 'skipped';
       res.reason = 'Answer not certain enough for Auto Mode';
       continue;
     }
-    await applyValue(res, resolved.answer, isDraft || lowConfidence ? 'uncertain' : 'filled');
+    // Auto Mode trusts drafts that passed the server's grounding check (no invented facts) with good confidence;
+    // Review and Assisted modes still flag them so the person can read them first.
+    const trusted = !lowConfidence && (!isDraft || ctx.mode === 'auto');
+    await applyValue(res, resolved.answer, trusted ? 'filled' : 'uncertain');
+    if (res.status === 'filled' && isDraft) res.reason = 'AI-drafted from your profile (checked against your facts)';
     if (res.status === 'uncertain') res.reason = isDraft ? 'AI-drafted from your verified profile — please review' : 'Low-confidence answer — please review';
   }
 

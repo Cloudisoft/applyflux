@@ -1,4 +1,4 @@
-import type { AutofillProfile, FullCandidateProfile } from './schemas';
+import { ScreeningAnswers, type AutofillProfile, type FullCandidateProfile } from './schemas';
 
 export interface ProfileIssue {
   field: string;
@@ -152,6 +152,7 @@ export function buildAutofillProfile(p: FullCandidateProfile): AutofillProfile {
     desiredSalaryMax: pr.desiredSalaryMax,
     salaryCurrency: pr.salaryCurrency,
     willingToRelocate: pr.willingToRelocate,
+    screening: pr.screening ?? ScreeningAnswers.parse({}),
     experiences: sorted.map((e) => ({
       company: e.company, title: e.title, location: e.location, startDate: e.startDate, endDate: e.endDate,
       isCurrent: e.isCurrent, description: e.description, verified: e.verified,

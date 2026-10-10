@@ -42,9 +42,10 @@ const PROFILE_COLUMNS: Record<keyof Omit<CandidateProfileData, never>, string> =
   workplaceTypes: 'workplace_types',
   desiredLocations: 'desired_locations',
   willingToRelocate: 'willing_to_relocate',
+  screening: 'screening',
   fieldMeta: 'field_meta',
 };
-const JSON_COLUMNS = new Set(['other_links', 'languages', 'work_authorizations', 'field_meta']);
+const JSON_COLUMNS = new Set(['other_links', 'languages', 'work_authorizations', 'screening', 'field_meta']);
 
 function rowToProfile(row: Record<string, unknown> | null): FullCandidateProfile['profile'] {
   const base = CandidateProfileInput.parse({});

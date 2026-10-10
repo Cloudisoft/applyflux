@@ -30,7 +30,7 @@ ApplyFlux has three deployables, all built from this monorepo:
    - `DOWNLOAD_SIGNING_SECRET` (`openssl rand -hex 32`)
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
    - AI: `AI_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`, `AI_FALLBACK_PROVIDER=openai`, `OPENAI_API_KEY`
-   - optional: `EXTENSION_ORIGINS`, `VITE_EXTENSION_ID`, `AUTO_SUBMIT_PLATFORMS`
+   - optional: `EXTENSION_ORIGINS`, `VITE_EXTENSION_ID`, `APPLYFLUX_EXTENSION_KEY`, `AUTO_SUBMIT_PLATFORMS`, `DISCOVERY_INTERVAL_HOURS`, `ADZUNA_APP_ID` / `ADZUNA_APP_KEY` (broader automatic job search)
 4. Deploy. Railway runs `pnpm install && pnpm build`, then `pnpm db:migrate` as the pre-deploy step (applies any new migrations before traffic switches), then `pnpm start`. `PORT` is supplied by Railway.
 5. The deploy is healthy when `GET /api/health` returns `{"data":{"ok":true,…}}` (Railway's health check uses this path).
 

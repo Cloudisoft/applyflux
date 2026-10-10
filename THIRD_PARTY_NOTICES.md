@@ -31,3 +31,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+Additional career-ops material (MIT) used for automatic job discovery:
+- `templates/portals.example.yml` — the tracked company job boards seeding `apps/server/src/services/board-catalog.ts`.
+- `providers/remotive.mjs`, `remoteok.mjs`, `arbeitnow.mjs`, `himalayas.mjs`, `themuse.mjs` — feed endpoints, field mappings and the fixed-host/no-redirect safety approach ported to `apps/server/src/services/discovery.ts`.
