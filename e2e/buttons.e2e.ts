@@ -81,8 +81,9 @@ async function openPage(path: string, auth: boolean): Promise<{ page: Page; erro
     if (r.url().includes('/api/') && r.status() >= 500 && r.status() !== 503) apiFailures.push(`${r.request().method()} ${new URL(r.url()).pathname} → ${r.status()}`);
   });
   await page.goto(`${E2E.api}${path}`, { waitUntil: 'domcontentloaded' });
-  await page.waitForLoadState('networkidle').catch(() => {});
-  await page.waitForTimeout(300);
+  // Pages that poll for live updates never go fully idle: cap the wait.
+  await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {});
+  await page.waitForTimeout(200);
   return { page, errors, apiFailures };
 }
 
@@ -190,21 +191,24 @@ async function auditPage(path: string, auth: boolean, seen: Set<string>): Promis
   return out;
 }
 
-test('every button, link, tab and switch works', async () => {
-  test.setTimeout(45 * 60_000);
-  const seen = new Set<string>();
-  const pages: Array<[string, boolean]> = [
-    ['/', false], ['/platforms', false], ['/security', false], ['/signin', false], ['/signup', false], ['/forgot-password', false],
-    ['/app', true], ['/app/automation', true], ['/app/applications', true], ['/app/jobs', true], [`/app/jobs/${jobId}`, true], ['/app/match', true],
-    ['/app/profile', true], ['/app/resumes', true], ['/app/studio', true], ['/app/cover-letters', true], ['/app/answers', true],
-    ['/app/extension', true], ['/app/settings/automation', true], ['/app/settings/account', true], ['/app/notifications', true], ['/app/setup', true],
-  ];
-  const all: Outcome[] = [];
-  for (const [p, auth] of pages) all.push(...(await auditPage(p, auth, seen)));
-  const bad = all.filter((o) => o.result === 'error');
-  const dead = all.filter((o) => o.result === 'no-effect');
-  console.log(`checked ${all.filter((o) => o.result !== 'skipped').length} controls on ${pages.length} screens`);
-  for (const o of dead) console.log('NO EFFECT', o.page, o.control);
-  for (const o of bad) console.log('ERROR', o.page, o.control, o.detail);
-  expect(bad, bad.map((o) => `${o.page} ${o.control}: ${o.detail}`).join('\n')).toEqual([]);
-});
+const PAGES: Array<[string, boolean]> = [
+  ['/', false], ['/platforms', false], ['/security', false], ['/signin', false], ['/signup', false], ['/forgot-password', false],
+  ['/app', true], ['/app/automation', true], ['/app/applications', true], ['/app/jobs', true], ['/app/jobs/:job', true], ['/app/match', true],
+  ['/app/profile', true], ['/app/resumes', true], ['/app/studio', true], ['/app/cover-letters', true], ['/app/answers', true],
+  ['/app/extension', true], ['/app/settings/automation', true], ['/app/settings/account', true], ['/app/notifications', true], ['/app/setup', true],
+];
+const seen = new Set<string>();
+const dead: Outcome[] = [];
+
+for (const [p, auth] of PAGES) {
+  test(`every control works on ${p}`, async () => {
+    test.setTimeout(15 * 60_000);
+    const path = p.replace(':job', jobId);
+    const out = await auditPage(path, auth, seen);
+    for (const o of out) if (o.result !== 'ok') console.log(o.result.toUpperCase(), p, o.control, o.detail ?? '');
+    console.log(`${p}: ${out.filter((o) => o.result === 'ok').length} ok, ${out.filter((o) => o.result === 'no-effect').length} no effect, ${out.filter((o) => o.result === 'error').length} errors`);
+    dead.push(...out.filter((o) => o.result === 'no-effect'));
+    const bad = out.filter((o) => o.result === 'error');
+    expect(bad, bad.map((o) => `${o.control}: ${o.detail}`).join('\n')).toEqual([]);
+  });
+}
