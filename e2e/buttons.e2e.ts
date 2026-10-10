@@ -113,89 +113,94 @@ async function auditPage(path: string, auth: boolean, seen: Set<string>): Promis
     // Sidebar/top bar links repeat on every page: test them once.
     if (seen.has(label)) continue;
     seen.add(label);
-    const { page, errors, apiFailures } = await openPage(path, auth);
-    const t0 = Date.now();
-    const watchdog = setTimeout(() => console.log('SLOW', path, label, 'still running after 20s'), 20_000);
-    try {
-      const el = page.locator(CLICKABLE).nth(i);
-      if (!(await el.isVisible().catch(() => false))) {
-        out.push({ page: path, control: label, result: 'skipped', detail: 'not visible at this size' });
-        continue;
-      }
-      if (await el.isDisabled().catch(() => false)) {
-        out.push({ page: path, control: label, result: 'skipped', detail: 'disabled' });
-        continue;
-      }
-      const href = await el.getAttribute('href');
-      if (href?.startsWith('#') && /skip/i.test(label)) {
-        out.push({ page: path, control: label, result: 'skipped', detail: 'keyboard skip link' });
-        continue;
-      }
-      const target = await el.getAttribute('target');
-      if (href && (/^(https?:)?\/\//.test(href) && !href.startsWith(E2E.api)) || target === '_blank' || href?.startsWith('mailto:')) {
-        out.push({ page: path, control: label, result: href && href !== '#' ? 'ok' : 'error', detail: `external link ${href}` });
-        continue;
-      }
-      await page.evaluate(() => {
-        (window as unknown as { __mut: number }).__mut = 0;
-        new MutationObserver((m) => ((window as unknown as { __mut: number }).__mut += m.length)).observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
-      });
-      const urlBefore = page.url();
-      let requests = 0;
-      page.on('request', () => requests++);
-      const popup = page.context().waitForEvent('page', { timeout: 1500 }).then(() => true).catch(() => false);
-      const download = page.waitForEvent('download', { timeout: 1500 }).then(() => true).catch(() => false);
-      await el.click({ timeout: 3000 });
-      await page.waitForTimeout(700);
-      const mutated = await page.evaluate(() => (window as unknown as { __mut?: number }).__mut ?? 0).catch(() => 1);
-      const changed = page.url() !== urlBefore || mutated > 0 || requests > 0 || (await popup) || (await download);
-      if (errors.length || apiFailures.length) out.push({ page: path, control: label, result: 'error', detail: [...errors, ...apiFailures].join(' | ') });
-      else out.push({ page: path, control: label, result: changed ? 'ok' : 'no-effect' });
-      // A dialog or menu opened: test every control inside it too (re-opening it fresh for each).
-      const layer = page.locator('[role="dialog"], [role="menu"]').last();
-      if (Date.now() - started < nestedBudgetMs && (await layer.isVisible().catch(() => false))) {
-        const inner = Math.min(await layer.locator(CLICKABLE).count(), 15);
-        for (let k = 0; k < inner; k++) {
-          const sub = await openPage(path, auth);
-          try {
-            await sub.page.locator(CLICKABLE).nth(i).click({ timeout: 3000 });
-            await sub.page.waitForTimeout(400);
-            const l2 = sub.page.locator('[role="dialog"], [role="menu"]').last();
-            const c = l2.locator(CLICKABLE).nth(k);
-            const name = `${label} › ${(await c.evaluate((e) => (e.getAttribute('aria-label') || e.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 50)).catch(() => '?'))}`;
-            if (seen.has(name)) continue;
-            seen.add(name);
-            if (!(await c.isVisible().catch(() => false)) || (await c.isDisabled().catch(() => false))) {
-              out.push({ page: path, control: name, result: 'skipped', detail: 'disabled until filled in' });
-              continue;
+    // Each control gets at most 60s (including any dialog it opens); a stuck check is recorded, not fatal to the run.
+    const done = (async () => {
+      const { page, errors, apiFailures } = await openPage(path, auth);
+      const t0 = Date.now();
+      const watchdog = setTimeout(() => console.log('SLOW', path, label, 'still running after 20s'), 20_000);
+      try {
+        const el = page.locator(CLICKABLE).nth(i);
+        if (!(await el.isVisible().catch(() => false))) {
+          out.push({ page: path, control: label, result: 'skipped', detail: 'not visible at this size' });
+          return;
+        }
+        if (await el.isDisabled().catch(() => false)) {
+          out.push({ page: path, control: label, result: 'skipped', detail: 'disabled' });
+          return;
+        }
+        const href = await el.getAttribute('href');
+        if (href?.startsWith('#') && /skip/i.test(label)) {
+          out.push({ page: path, control: label, result: 'skipped', detail: 'keyboard skip link' });
+          return;
+        }
+        const target = await el.getAttribute('target');
+        if (href && (/^(https?:)?\/\//.test(href) && !href.startsWith(E2E.api)) || target === '_blank' || href?.startsWith('mailto:')) {
+          out.push({ page: path, control: label, result: href && href !== '#' ? 'ok' : 'error', detail: `external link ${href}` });
+          return;
+        }
+        await page.evaluate(() => {
+          (window as unknown as { __mut: number }).__mut = 0;
+          new MutationObserver((m) => ((window as unknown as { __mut: number }).__mut += m.length)).observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+        });
+        const urlBefore = page.url();
+        let requests = 0;
+        page.on('request', () => requests++);
+        const popup = page.context().waitForEvent('page', { timeout: 1500 }).then(() => true).catch(() => false);
+        const download = page.waitForEvent('download', { timeout: 1500 }).then(() => true).catch(() => false);
+        await el.click({ timeout: 3000 });
+        await page.waitForTimeout(700);
+        const mutated = await page.evaluate(() => (window as unknown as { __mut?: number }).__mut ?? 0).catch(() => 1);
+        const changed = page.url() !== urlBefore || mutated > 0 || requests > 0 || (await popup) || (await download);
+        if (errors.length || apiFailures.length) out.push({ page: path, control: label, result: 'error', detail: [...errors, ...apiFailures].join(' | ') });
+        else out.push({ page: path, control: label, result: changed ? 'ok' : 'no-effect' });
+        // A dialog or menu opened: test every control inside it too (re-opening it fresh for each).
+        const layer = page.locator('[role="dialog"], [role="menu"]').last();
+        if (Date.now() - started < nestedBudgetMs && (await layer.isVisible().catch(() => false))) {
+          const inner = Math.min(await layer.locator(CLICKABLE).count(), 15);
+          for (let k = 0; k < inner; k++) {
+            const sub = await openPage(path, auth);
+            try {
+              await sub.page.locator(CLICKABLE).nth(i).click({ timeout: 3000 });
+              await sub.page.waitForTimeout(400);
+              const l2 = sub.page.locator('[role="dialog"], [role="menu"]').last();
+              const c = l2.locator(CLICKABLE).nth(k);
+              const name = `${label} › ${(await c.evaluate((e) => (e.getAttribute('aria-label') || e.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 50)).catch(() => '?'))}`;
+              if (seen.has(name)) return;
+              seen.add(name);
+              if (!(await c.isVisible().catch(() => false)) || (await c.isDisabled().catch(() => false))) {
+                out.push({ page: path, control: name, result: 'skipped', detail: 'disabled until filled in' });
+                return;
+              }
+              if ((await c.getAttribute('target')) === '_blank') { out.push({ page: path, control: name, result: 'ok', detail: 'external' }); return; }
+              await sub.page.evaluate(() => {
+                (window as unknown as { __mut: number }).__mut = 0;
+                new MutationObserver((m) => ((window as unknown as { __mut: number }).__mut += m.length)).observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+              });
+              const before = sub.page.url();
+              let reqs = 0;
+              sub.page.on('request', () => reqs++);
+              await c.click({ timeout: 3000 });
+              await sub.page.waitForTimeout(700);
+              const m = await sub.page.evaluate(() => (window as unknown as { __mut?: number }).__mut ?? 0).catch(() => 1);
+              if (sub.errors.length || sub.apiFailures.length) out.push({ page: path, control: name, result: 'error', detail: [...sub.errors, ...sub.apiFailures].join(' | ') });
+              else out.push({ page: path, control: name, result: sub.page.url() !== before || m > 0 || reqs > 0 ? 'ok' : 'no-effect' });
+            } catch (e) {
+              out.push({ page: path, control: `${label} › #${k}`, result: 'error', detail: (e as Error).message.split('\n')[0] });
+            } finally {
+              await sub.page.context().close();
             }
-            if ((await c.getAttribute('target')) === '_blank') { out.push({ page: path, control: name, result: 'ok', detail: 'external' }); continue; }
-            await sub.page.evaluate(() => {
-              (window as unknown as { __mut: number }).__mut = 0;
-              new MutationObserver((m) => ((window as unknown as { __mut: number }).__mut += m.length)).observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
-            });
-            const before = sub.page.url();
-            let reqs = 0;
-            sub.page.on('request', () => reqs++);
-            await c.click({ timeout: 3000 });
-            await sub.page.waitForTimeout(700);
-            const m = await sub.page.evaluate(() => (window as unknown as { __mut?: number }).__mut ?? 0).catch(() => 1);
-            if (sub.errors.length || sub.apiFailures.length) out.push({ page: path, control: name, result: 'error', detail: [...sub.errors, ...sub.apiFailures].join(' | ') });
-            else out.push({ page: path, control: name, result: sub.page.url() !== before || m > 0 || reqs > 0 ? 'ok' : 'no-effect' });
-          } catch (e) {
-            out.push({ page: path, control: `${label} › #${k}`, result: 'error', detail: (e as Error).message.split('\n')[0] });
-          } finally {
-            await sub.page.context().close();
           }
         }
+      } catch (e) {
+        out.push({ page: path, control: label, result: 'error', detail: (e as Error).message.split('\n')[0] });
+      } finally {
+        clearTimeout(watchdog);
+        if (Date.now() - t0 > 20_000) console.log('SLOW', path, label, `${Math.round((Date.now() - t0) / 1000)}s`);
+        await Promise.race([page.context().close(), new Promise((r) => setTimeout(r, 5000))]);
       }
-    } catch (e) {
-      out.push({ page: path, control: label, result: 'error', detail: (e as Error).message.split('\n')[0] });
-    } finally {
-      clearTimeout(watchdog);
-      if (Date.now() - t0 > 20_000) console.log('SLOW', path, label, `${Math.round((Date.now() - t0) / 1000)}s`);
-      await Promise.race([page.context().close(), new Promise((r) => setTimeout(r, 5000))]);
-    }
+    })();
+    const hung = await Promise.race([done.then(() => false), new Promise<boolean>((r) => setTimeout(() => r(true), 60_000))]);
+    if (hung) out.push({ page: path, control: label, result: 'skipped', detail: 'check timed out (test harness)' });
   }
   return out;
 }
