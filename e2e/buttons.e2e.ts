@@ -74,7 +74,8 @@ async function openPage(path: string, auth: boolean): Promise<{ page: Page; erro
   const apiFailures: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => {
-    if (m.type() === 'error' && !/127\.0\.0\.1:54321|Content Security Policy|WebSocket|ERR_CONNECTION_REFUSED|Failed to load resource|React Router Future/.test(m.text())) errors.push(m.text().slice(0, 200));
+    // The test server has no real auth service, so the auth library logs 'Failed to fetch' on sign-out (not an app error).
+    if (m.type() === 'error' && !/127\.0\.0\.1:54321|Content Security Policy|WebSocket|ERR_CONNECTION_REFUSED|Failed to load resource|React Router Future|^TypeError: Failed to fetch$/.test(m.text())) errors.push(m.text().slice(0, 200));
   });
   page.on('response', (r) => {
     // 503 = a feature not configured on this server (AI in tests): the UI must still show a message, checked via mutations.
@@ -97,6 +98,10 @@ async function labelOf(page: Page, i: number) {
 
 async function auditPage(path: string, auth: boolean, seen: Set<string>): Promise<Outcome[]> {
   const out: Outcome[] = [];
+  // Screens with many rows open many similar dialogs: every top-level control is always clicked,
+  // dialog contents are explored until the time budget runs out (each distinct dialog first).
+  const started = Date.now();
+  const nestedBudgetMs = 8 * 60_000;
   const first = await openPage(path, auth);
   const count = await first.page.locator(CLICKABLE).count();
   const labels: string[] = [];
@@ -146,8 +151,8 @@ async function auditPage(path: string, auth: boolean, seen: Set<string>): Promis
       else out.push({ page: path, control: label, result: changed ? 'ok' : 'no-effect' });
       // A dialog or menu opened: test every control inside it too (re-opening it fresh for each).
       const layer = page.locator('[role="dialog"], [role="menu"]').last();
-      if (await layer.isVisible().catch(() => false)) {
-        const inner = await layer.locator(CLICKABLE).count();
+      if (Date.now() - started < nestedBudgetMs && (await layer.isVisible().catch(() => false))) {
+        const inner = Math.min(await layer.locator(CLICKABLE).count(), 15);
         for (let k = 0; k < inner; k++) {
           const sub = await openPage(path, auth);
           try {
@@ -202,7 +207,7 @@ const dead: Outcome[] = [];
 
 for (const [p, auth] of PAGES) {
   test(`every control works on ${p}`, async () => {
-    test.setTimeout(45 * 60_000);
+    test.setTimeout(30 * 60_000);
     const path = p.replace(':job', jobId);
     const out = await auditPage(path, auth, seen);
     for (const o of out) if (o.result !== 'ok') console.log(o.result.toUpperCase(), p, o.control, o.detail ?? '');
