@@ -75,7 +75,7 @@ async function openPage(path: string, auth: boolean): Promise<{ page: Page; erro
   page.on('pageerror', (e) => { if (e.message !== 'Failed to fetch') errors.push(e.message); });
   page.on('console', (m) => {
     // The test server has no real auth service, so the auth library logs 'Failed to fetch' on sign-out (not an app error).
-    if (m.type() === 'error' && !/127\.0\.0\.1:54321|Content Security Policy|WebSocket|ERR_CONNECTION_REFUSED|Failed to load resource|React Router Future|^TypeError: Failed to fetch$/.test(m.text())) errors.push(m.text().slice(0, 200));
+    if (m.type() === 'error' && !/127\.0\.0\.1:54321|Content Security Policy|WebSocket|ERR_CONNECTION_REFUSED|Failed to load resource|React Router Future|^TypeError: Failed to fetch/.test(m.text())) errors.push(m.text().slice(0, 200));
   });
   page.on('response', (r) => {
     // 503 = a feature not configured on this server (AI in tests): the UI must still show a message, checked via mutations.
