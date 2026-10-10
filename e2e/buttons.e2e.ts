@@ -72,7 +72,7 @@ async function openPage(path: string, auth: boolean): Promise<{ page: Page; erro
   const page = await ctx.newPage();
   const errors: string[] = [];
   const apiFailures: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('pageerror', (e) => { if (e.message !== 'Failed to fetch') errors.push(e.message); });
   page.on('console', (m) => {
     // The test server has no real auth service, so the auth library logs 'Failed to fetch' on sign-out (not an app error).
     if (m.type() === 'error' && !/127\.0\.0\.1:54321|Content Security Policy|WebSocket|ERR_CONNECTION_REFUSED|Failed to load resource|React Router Future|^TypeError: Failed to fetch$/.test(m.text())) errors.push(m.text().slice(0, 200));
@@ -114,6 +114,8 @@ async function auditPage(path: string, auth: boolean, seen: Set<string>): Promis
     if (seen.has(label)) continue;
     seen.add(label);
     const { page, errors, apiFailures } = await openPage(path, auth);
+    const t0 = Date.now();
+    const watchdog = setTimeout(() => console.log('SLOW', path, label, 'still running after 20s'), 20_000);
     try {
       const el = page.locator(CLICKABLE).nth(i);
       if (!(await el.isVisible().catch(() => false))) {
@@ -190,7 +192,9 @@ async function auditPage(path: string, auth: boolean, seen: Set<string>): Promis
     } catch (e) {
       out.push({ page: path, control: label, result: 'error', detail: (e as Error).message.split('\n')[0] });
     } finally {
-      await page.context().close();
+      clearTimeout(watchdog);
+      if (Date.now() - t0 > 20_000) console.log('SLOW', path, label, `${Math.round((Date.now() - t0) / 1000)}s`);
+      await Promise.race([page.context().close(), new Promise((r) => setTimeout(r, 5000))]);
     }
   }
   return out;
