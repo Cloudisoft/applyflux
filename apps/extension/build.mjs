@@ -38,6 +38,14 @@ const manifest = {
   optional_host_permissions: ['https://*/*', 'http://*/*'],
   externally_connectable: { matches: [...new Set([match(web), match(api)])] },
   content_security_policy: { extension_pages: "script-src 'self'; object-src 'self'" },
+  // "Save to ApplyFlux" button on job boards. Only shows a button; the page is read when the person clicks it.
+  content_scripts: [
+    {
+      matches: ['https://www.linkedin.com/jobs/*', 'https://*.indeed.com/*', 'https://www.monster.com/*', 'https://*.monster.com/*', 'https://my.greenhouse.io/*'],
+      js: ['clip.js'],
+      run_at: 'document_idle',
+    },
+  ],
   minimum_chrome_version: '116',
   ...(key ? { key } : {}),
 };
@@ -55,7 +63,7 @@ const opts = {
   logLevel: 'info',
 };
 // Content scripts injected with executeScript are classic scripts: build that one as an IIFE.
-const content = { ...opts, entryPoints: { content: 'src/content.ts' }, format: 'iife' };
+const content = { ...opts, entryPoints: { content: 'src/content.ts', clip: 'src/clip.ts' }, format: 'iife' };
 const rest = { ...opts, entryPoints: { background: 'src/background.ts', popup: 'src/popup.ts', offscreen: 'src/offscreen.ts' } };
 
 if (process.argv.includes('--watch')) {

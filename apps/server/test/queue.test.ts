@@ -299,3 +299,70 @@ describe('Greenhouse jobs on company websites', () => {
   });
 });
 
+describe('Save to ApplyFlux from job boards', () => {
+  it('matches LinkedIn/Indeed jobs to the employer\'s own posting and queues them; unmatched ones are left for the person', async () => {
+    const { u, ext } = await setup('clip@example.com');
+    env.setBoards({
+      'https://boards-api.greenhouse.io/v1/boards/acmehealth/jobs': {
+        status: 200,
+        json: { jobs: [
+          { id: 501, title: 'Senior QA Analyst', absolute_url: 'https://job-boards.greenhouse.io/acmehealth/jobs/501', location: { name: 'Remote, US' } },
+          { id: 502, title: 'Product Designer', absolute_url: 'https://job-boards.greenhouse.io/acmehealth/jobs/502', location: { name: 'Remote' } },
+        ] },
+      },
+    });
+    const res = await ext.post('/api/ext/jobs/save', {
+      jobs: [
+        { url: 'https://www.linkedin.com/jobs/view/4012345678', title: 'Senior QA Analyst', company: 'Acme Health', location: 'United States (Remote)' },
+        { url: 'https://job-boards.greenhouse.io/othercorp/jobs/77', title: 'QA Engineer', company: 'OtherCorp' },
+        { url: 'https://www.indeed.com/viewjob?jk=abc123', title: 'Test Lead', company: 'Nowhere Widgets Ltd' },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const d = res.body.data;
+    expect(d).toMatchObject({ queued: 2, needsYou: 1 });
+    // The LinkedIn job is stored as the employer's Greenhouse posting, which ApplyFlux can fill.
+    expect(d.results[0]).toMatchObject({ status: 'queued', url: 'https://job-boards.greenhouse.io/acmehealth/jobs/501' });
+    expect(d.results[2]).toMatchObject({ status: 'needs_you' });
+    const queued = await env.ctx.db.query(`select j.url from applications a join jobs j on j.id=a.job_id where a.user_id=$1 and a.state='QUEUED' order by j.url`, [u.id]);
+    expect(queued.rows.map((r) => r.url)).toEqual(expect.arrayContaining(['https://job-boards.greenhouse.io/acmehealth/jobs/501', 'https://job-boards.greenhouse.io/othercorp/jobs/77']));
+    // An employer link shown on the job page is used directly (any employer site, e.g. Workday).
+    const shown = (await ext.post('/api/ext/jobs/save', { jobs: [{ url: 'https://www.linkedin.com/jobs/view/4055555555', title: 'QA Lead', company: 'Delta Logistics', applyUrl: 'https://delta.wd1.myworkdayjobs.com/careers/job/QA-Lead_R1' }] })).body.data;
+    expect(shown.results[0]).toMatchObject({ status: 'queued', url: 'https://delta.wd1.myworkdayjobs.com/careers/job/QA-Lead_R1' });
+    // Saving the same jobs again does not duplicate anything.
+    const again = (await ext.post('/api/ext/jobs/save', { jobs: [{ url: 'https://www.linkedin.com/jobs/view/4012345678', title: 'Senior QA Analyst', company: 'Acme Health' }] })).body.data;
+    expect(again.queued).toBe(0);
+  });
+});
+
+describe('answers the person gives in a form are remembered', () => {
+  it('parks for the answers, resumes, and reuses them (and similar wordings) on the next form', async () => {
+    const { u, ext, jobs } = await setup('learn@example.com');
+    await u.post('/api/applications/enqueue', { jobIds: [jobs[0]] });
+    await u.post('/api/automation/start');
+    let t: { applicationId?: string } = {};
+    for (let i = 0; i < 8 && !t.applicationId; i++) t = (await ext.post('/api/ext/next')).body.data;
+    const id = t.applicationId!;
+    await ext.post(`/api/ext/applications/${id}/report`, { type: 'intervention', data: { intervention: 'review_before_submit', message: '2 question(s) need your answer: veteran; why', pageUrl: 'https://example.com' } });
+    expect((await u.get(`/api/applications/${id}`)).body.data.state).toBe('AWAITING_REVIEW');
+    const r = await ext.post(`/api/ext/applications/${id}/report`, {
+      type: 'answers_provided',
+      data: { answers: [{ question: 'Are you a veteran, active member or reservist of the United States Armed Forces?', answer: 'No' }, { question: 'Why do you want to join our team?', answer: 'I like building reliable test automation.' }] },
+    });
+    expect(r.body.data.state).toBe('IN_PROGRESS');
+    // Next form: different wording, still answered from what the person gave.
+    const next = (await ext.post('/api/ext/answers', {
+      applicationId: id,
+      questions: [
+        { key: 'vet', label: 'Veteran Status', kind: 'select', options: ['I am a protected veteran', 'No', 'Decline to self-identify'], required: true },
+        { key: 'why', label: 'Why do you want to join our team at Acme?', kind: 'textarea', required: true },
+      ],
+    })).body.data;
+    const by = Object.fromEntries(next.map((a: { key: string }) => [a.key, a]));
+    expect(by.vet).toMatchObject({ answer: 'No', needsUser: false });
+    expect(by.why).toMatchObject({ answer: 'I like building reliable test automation.', source: 'saved' });
+    const profile = (await u.get('/api/profile')).body.data.profile;
+    expect(profile.screening).toMatchObject({ eeo: 'answer', veteranStatus: 'No' });
+  });
+});
+

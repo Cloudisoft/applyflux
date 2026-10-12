@@ -18,6 +18,13 @@ export const ContentToBackground = z.discriminatedUnion('type', [
       .max(40),
   }),
   z.object({ type: z.literal('af:phase'), applicationId: z.string().uuid(), phase: z.enum(['filling', 'awaiting_verification', 'awaiting_auth', 'awaiting_review', 'submitting', 'done']) }),
+  z.object({
+    type: z.literal('af:save_jobs'),
+    jobs: z
+      .array(z.object({ url: z.string().url().max(2000), title: z.string().min(1).max(300), company: z.string().min(1).max(200), location: z.string().max(300).nullish(), description: z.string().max(60000).nullish(), applyUrl: z.string().url().max(4000).nullish() }))
+      .min(1)
+      .max(50),
+  }),
   z.object({ type: z.literal('af:save_job'), job: z.object({ url: z.string().url().max(2000), title: z.string().min(1).max(300), company: z.string().min(1).max(200), location: z.string().max(300).optional(), description: z.string().max(60000).optional() }) }),
 ]);
 export type ContentToBackground = z.infer<typeof ContentToBackground>;

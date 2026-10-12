@@ -350,6 +350,7 @@ export function AssessmentPanel({ data }: { data: ProfileResponse }) {
 type Screening = ReturnType<typeof ScreeningAnswers.parse>;
 const YES_NO: Array<[keyof Screening, string]> = [
   ['over18', 'Are you 18 or older?'],
+  ['citizen', 'Are you a citizen of the country you live in?'],
   ['willingOnsite', 'Willing to work on-site / commute when the role requires it?'],
   ['backgroundCheck', 'Willing to undergo a background check?'],
   ['drugTest', 'Willing to take a drug test?'],
@@ -378,7 +379,7 @@ export function ScreeningCard({ value }: { value: Screening | undefined }) {
           </Field>
         ))}
         <Field label="How you usually find jobs" htmlFor="sc-ref" hint='Used for "How did you hear about us?"'>
-          <Input id="sc-ref" placeholder="Online job board" value={s.referralSource ?? ''} onChange={(e) => set({ referralSource: e.target.value || null })} />
+          <Input id="sc-ref" placeholder="Google" value={s.referralSource ?? ''} onChange={(e) => set({ referralSource: e.target.value || null })} />
         </Field>
         <div className="flex items-start justify-between gap-3 rounded-xl border border-line p-3">
           <div><div className="text-sm font-medium">Accept standard acknowledgements</div><div className="text-xs text-muted">Tick "I have read the privacy notice" and "I certify my answers are accurate" boxes for you.</div></div>

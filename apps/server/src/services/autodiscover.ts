@@ -72,6 +72,7 @@ export function discoveryRunning(userId: string) {
 
 /** Run discovery for one person. Safe to call repeatedly: concurrent calls for the same person are ignored. */
 export async function runDiscovery(ctx: AppContext, userId: string): Promise<DiscoverySummary | null> {
+  if (!ctx.config.DISCOVERY_ENABLED) return null;
   if (running.has(userId)) {
     // Settings changed mid-run: search again with them as soon as this run ends.
     rerun.add(userId);

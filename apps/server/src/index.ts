@@ -46,7 +46,7 @@ const sweeper = setInterval(() => {
 }, 30_000);
 
 // Automatic job discovery for everyone with target titles (no setup needed).
-const stopDiscovery = config.NODE_ENV === 'test' ? () => {} : startDiscoveryScheduler(ctx);
+const stopDiscovery = config.NODE_ENV === 'test' || !config.DISCOVERY_ENABLED ? () => {} : startDiscoveryScheduler(ctx);
 
 function shutdown() {
   clearInterval(sweeper);

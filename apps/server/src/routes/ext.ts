@@ -10,6 +10,7 @@ import { resolveAnswers } from '../services/answers';
 import { claimNext, handleReport, heartbeat, pauseRun, startRun, stopRun, userAction } from '../services/queue';
 import { upsertJob, refreshMatches } from '../services/jobs';
 import { loadFullProfile } from '../services/profile';
+import { saveJobsFromBoard } from '../services/resolve';
 import { audit } from '../services/notify';
 
 /**
@@ -111,6 +112,26 @@ export function extRoutes(ctx: AppContext) {
       const out = await upsertJob(ctx.db, req.user.id, { origin: 'extension', ...b });
       await refreshMatches(ctx.db, req.user.id, await loadFullProfile(ctx.db, req.user.id), [out.id]);
       res.status(out.created ? 201 : 200).json({ data: out });
+    }),
+  );
+
+  /**
+   * "Save to ApplyFlux" on LinkedIn / Indeed / Monster / MyGreenhouse pages the person has open: the jobs
+   * they chose are matched to the employer's own posting and queued for Auto Apply.
+   */
+  const SavedJob = z.object({
+    url: z.string().url().max(2000),
+    title: z.string().trim().min(1).max(300),
+    company: z.string().trim().min(1).max(200),
+    location: z.string().trim().max(300).optional().nullable(),
+    description: z.string().max(60000).optional().nullable(),
+    applyUrl: z.string().url().max(4000).optional().nullable(),
+  });
+  r.post(
+    '/jobs/save',
+    ah<ExtRequest>(async (req, res) => {
+      const b = z.object({ jobs: z.array(SavedJob).min(1).max(50), queue: z.boolean().default(true) }).parse(req.body);
+      res.json({ data: await saveJobsFromBoard(ctx, req.user.id, b.jobs, { queue: b.queue }) });
     }),
   );
 

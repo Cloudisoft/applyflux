@@ -279,6 +279,8 @@ test('A CAPTCHA parks only its own application: the next one is filled and submi
 test('Extension popup buttons: start, pause, stop and disconnect all work', async () => {
   const api = await newUser('popup@example.com');
   await pairViaPopup(api);
+  // A job that waits on a verification check keeps the run 'running' (an empty queue completes it at once).
+  await queue(api, 'captcha-before');
   const popup = await context.newPage();
   await popup.goto(`chrome-extension://${extId}/popup.html`);
   await expect(popup.locator('#main')).toBeVisible();

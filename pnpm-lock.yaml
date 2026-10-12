@@ -39,6 +39,9 @@ importers:
       esbuild:
         specifier: 0.24.2
         version: 0.24.2
+      jsdom:
+        specifier: 25.0.1
+        version: 25.0.1(canvas@2.11.2)
       typescript:
         specifier: 5.6.3
         version: 5.6.3

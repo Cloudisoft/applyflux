@@ -177,6 +177,74 @@ async function collectAndReport(ctx: RunContext, adapterId: string) {
   await phase(ctx, 'done').catch(() => {});
 }
 
+/** Current value of a field as the person left it (option label for choices). */
+function valueOf(f: PassResult['results'][number]['field']): string {
+  const el = f.element as HTMLInputElement & HTMLSelectElement;
+  if (f.choices?.length) {
+    const sel = f.choices.find((b) => b.getAttribute('aria-pressed') === 'true' || b.getAttribute('aria-checked') === 'true' || b.getAttribute('data-state') === 'on' || /(^|[_\s-])(active|selected|checked)/i.test(b.className));
+    return sel?.textContent?.trim() ?? '';
+  }
+  if (f.group?.length) return f.group.filter((g) => g.checked).map((g) => (g.labels?.[0]?.textContent ?? g.value).trim()).join(', ');
+  if (f.kind === 'checkbox') return el.checked ? 'Yes' : '';
+  if (f.kind === 'select') return el.selectedOptions?.[0]?.value ? el.selectedOptions[0].textContent?.trim() ?? '' : '';
+  if (f.kind === 'combobox') {
+    // React-select style widgets show the chosen value next to the input.
+    const shown = el.closest('[class*="select" i], [class*="combobox" i]')?.querySelector('[class*="single-value" i], [class*="singleValue" i]')?.textContent?.trim();
+    return shown || el.value || '';
+  }
+  return (el.value ?? '').trim();
+}
+
+/**
+ * Some required questions are left. Park the application, highlight them, and wait for the person to answer
+ * in the form. Their answers are saved (reused on later forms), then the run continues and submits itself.
+ */
+async function waitForPersonAnswers(ctx: RunContext, engine: EngineContext, pass: PassResult, step: number): Promise<PassResult | null> {
+  const missing = pass.missingRequired.map((r) => r.field);
+  const labels = missing.map((f) => f.label).slice(0, 5).join('; ');
+  await report(ctx, {
+    type: 'intervention',
+    data: { intervention: 'review_before_submit', message: `${missing.length} question(s) need your answer: ${labels}. Answer them in the tab; ApplyFlux remembers your answers and continues by itself.`, fields: toReported(pass.results), stepState: { step, url: location.href }, pageUrl: location.href },
+  });
+  await phase(ctx, 'awaiting_review').catch(() => {});
+  showGuide('Your answer needed', `Answer the ${missing.length} highlighted question${missing.length === 1 ? '' : 's'}. ApplyFlux saves your answers for next time and finishes this application by itself.`);
+  const marked = missing.map((f) => f.element.closest<HTMLElement>('.field, .ashby-application-form-field-entry, fieldset, [class*="question" i], [class*="field" i]') ?? f.element);
+  marked.forEach((el) => {
+    el.dataset.afOutline = el.style.outline;
+    el.style.outline = '3px solid #f43f5e';
+    el.style.outlineOffset = '4px';
+  });
+  marked[0]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  const unmark = () => marked.forEach((el) => {
+    el.style.outline = el.dataset.afOutline ?? '';
+    el.style.outlineOffset = '';
+  });
+  try {
+    for (;;) {
+      await sleep(1500);
+      checkControl();
+      const now = await runPass(document, engine);
+      if (now.missingRequired.length) continue;
+      // Everything required is answered: remember what the person gave for the questions we could not answer.
+      const answers = missing
+        .map((f) => {
+          const fresh = now.results.find((r) => r.field.key === f.key || r.field.label === f.label)?.field ?? f;
+          return { question: f.label.replace(/\s*\*\s*$/, '').trim(), answer: valueOf(fresh) };
+        })
+        .filter((a) => a.question && a.answer && a.answer.length <= 5000 && !/^(select|choose)/i.test(a.answer));
+      await report(ctx, { type: 'answers_provided', data: { answers, resume: true } });
+      await phase(ctx, 'filling').catch(() => {});
+      hideGuide();
+      unmark();
+      return now;
+    }
+  } catch (e) {
+    unmark();
+    if (e instanceof Stop) return null;
+    throw e;
+  }
+}
+
 async function run(ctx: RunContext) {
   state.ctx = ctx;
   state.stopped = false;
@@ -232,18 +300,17 @@ async function run(ctx: RunContext) {
   const startUrl = location.href;
   for (let step = 1; step <= MAX_STEPS; step++) {
     await waitWhilePaused();
-    const pass = await fillCurrentStep(ctx, engine);
+    let pass = await fillCurrentStep(ctx, engine);
     if (!pass) return;
+    if (pass.missingRequired.length) {
+      // Ask the person in the form itself, learn their answers, then carry on (and submit) by ourselves.
+      const answered = await waitForPersonAnswers(ctx, engine, pass, step);
+      if (!answered) return;
+      pass = answered;
+    }
     const fields = toReported(pass.results);
     await report(ctx, { type: 'progress', data: { step: pass.hasNext && !pass.hasSubmit ? `Filled step ${step}` : 'Filled final step', progress: Math.min(85, 20 + step * 15), adapter: adapter.id, fields, stepState: { step, url: location.href }, pageUrl: location.href } });
 
-    if (pass.missingRequired.length) {
-      await report(ctx, {
-        type: 'intervention',
-        data: { intervention: 'missing_answers', message: `${pass.missingRequired.length} required question(s) need your answer: ${pass.missingRequired.map((r) => r.field.label).slice(0, 5).join('; ')}`, fields, stepState: { step, url: location.href }, pageUrl: location.href },
-      });
-      return;
-    }
     if (pass.hasNext && !pass.hasSubmit) {
       const before = document.body.innerHTML.length;
       adapter.nextButton(document)!.click();

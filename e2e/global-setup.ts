@@ -32,6 +32,8 @@ export default async function globalSetup() {
     env: {
       ...process.env,
       NODE_ENV: 'development',
+      // Tests use their own sandbox jobs; a live job search would queue real postings mid-test.
+      DISCOVERY_ENABLED: 'false',
       PORT: String(E2E.port),
       PUBLIC_API_URL: E2E.api,
       DATABASE_URL: dbUrl,

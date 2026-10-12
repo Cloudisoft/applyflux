@@ -1,4 +1,4 @@
-import type { AutofillProfile } from './schemas';
+import type { AutofillProfile, ScreeningAnswers } from './schemas';
 import type { QuestionCategory } from './schemas';
 import { normalizeText, similarity } from './text';
 
@@ -254,13 +254,27 @@ function screeningAnswer(question: string, options: string[] | undefined, profil
   if (/commut|on-?site|in[- ]office|in the office|hybrid|come (in)?to (the|our) office/.test(q) && !/relocat/.test(q)) return bool(s.willingOnsite, 'on-site work');
 
   if (/how did you (hear|find|learn)|where did you (hear|find|see)|referr(al|ed) source|source of (application|referral)|how were you referred/.test(q)) {
-    const src = s.referralSource ?? 'Online job board';
+    // The person's own choice, else "Google", else social media / online sources.
+    const src = s.referralSource ?? 'Google';
     if (!options?.length) return ok(src, '');
     const pick =
       choose(options, src) ??
-      options.find((o) => /job board|online|internet|website|careers? (site|page)|linkedin|indeed|other/i.test(o)) ??
+      [/google/i, /search engine|internet search|web search/i, /social media|social network/i, /linkedin/i, /job board|online|internet|website/i, /^other$/i]
+        .map((re) => options.find((o) => re.test(o)))
+        .find(Boolean) ??
       null;
     return ok(pick, 'No option fits your referral source');
+  }
+
+  // "Have you ever worked for / been employed by <company>?": No, unless that company is in the person's work history.
+  if (/(have|did) you (ever )?(previously )?(work(ed)? (for|at) (?!a |an |any )|been employed (by|at|with) (?!a |an |any )|been an employee of)|former (employee|intern|contractor) of|previously (been )?employed (by|at)|(are|were) you (a )?(current or )?(former|previous) (employee|contractor)/.test(q)) {
+    const worked = profile.experiences.some((e) => e.company && e.company.length > 2 && q.includes(e.company.toLowerCase()));
+    return ok(choose(options, worked), 'Options do not map cleanly to yes/no');
+  }
+
+  if (/\bcitizen(ship)?\b/.test(q) && (!options?.length || options.some((o) => /^(yes|no)\b/i.test(o.trim())))) {
+    const b = bool(s.citizen, 'citizenship');
+    if (b) return b;
   }
 
   // Privacy notices and "I certify this application is accurate" acknowledgements.
@@ -306,4 +320,24 @@ function rangeContains(option: string, n: number): boolean {
   const exact = o.match(/^\s*(\d+)\s*(years?)?\s*$/);
   if (exact) return Math.floor(n) === Number(exact[1]);
   return false;
+}
+
+/**
+ * When the person answers a self-identification or citizenship question in a form, turn it into their
+ * Application questions profile so every later form (however it is worded) gets the same answer.
+ */
+export function screeningFromAnswer(question: string, answer: string): Partial<ScreeningAnswers> | null {
+  const q = question.toLowerCase();
+  const a = answer.trim();
+  if (!a) return null;
+  const yn = /^yes\b/i.test(a) ? true : /^no\b/i.test(a) ? false : null;
+  if (/hispanic|latin[oa]/.test(q)) return yn == null ? null : { eeo: 'answer', hispanicLatino: yn };
+  if (/\bcitizen(ship)?\b/.test(q)) return yn == null ? null : { citizen: yn };
+  if (/sexual orientation/.test(q)) return { eeo: 'answer', sexualOrientation: a.slice(0, 80) };
+  if (/pronoun/.test(q)) return { eeo: 'answer', pronouns: a.slice(0, 40) };
+  if (/\bgender\b|\bsex\b/.test(q)) return { eeo: 'answer', gender: a.slice(0, 80) };
+  if (/\brace\b|racial|ethnic/.test(q)) return { eeo: 'answer', raceEthnicity: a.slice(0, 120) };
+  if (/veteran|armed forces|military/.test(q)) return { eeo: 'answer', veteranStatus: a.slice(0, 120) };
+  if (/disabilit/.test(q)) return { eeo: 'answer', disabilityStatus: a.slice(0, 120) };
+  return null;
 }

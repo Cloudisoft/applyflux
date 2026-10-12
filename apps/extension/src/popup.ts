@@ -61,6 +61,11 @@ for (const [id, type] of [['start', 'popup:start'], ['pause', 'popup:pause'], ['
     render();
   });
 }
+$('clip').addEventListener('click', async () => {
+  const r = await call('popup:clip');
+  $('error').textContent = r.error ? `Couldn't add the Save button here: ${r.error}. Use "Allow job sites" first.` : '';
+  if (!r.error) window.close();
+});
 $('disconnect').addEventListener('click', async (e) => {
   e.preventDefault();
   await call('popup:disconnect');

@@ -11,6 +11,10 @@ import {
   type ExtensionReport,
   type InterventionType,
   titleFit,
+  classifyQuestion,
+  isSensitive,
+  questionKey,
+  screeningFromAnswer,
 } from '@applyflux/shared';
 import { judgeEvidence } from '@applyflux/form-engine';
 import { autoSubmitPlatforms, type Config } from '../config';
@@ -435,6 +439,35 @@ export async function handleReport(db: Db, userId: string, connectionId: string,
           patch: { intervention: null, lease_expires_at: new Date(Date.now() + RETRY_POLICY.leaseSeconds * 1000) },
         });
         return { ok: true, state: 'IN_PROGRESS' };
+      }
+
+      case 'answers_provided': {
+        if (!['IN_PROGRESS', 'AWAITING_REVIEW'].includes(a.state)) throw new AppError('INVALID_TRANSITION', `Application is ${a.state}`);
+        // The person's own answers, typed into the form: approved for reuse on every later form.
+        for (const x of report.data.answers) {
+          const category = classifyQuestion(x.question);
+          await c.query(
+            `insert into saved_answers (user_id, question, question_key, category, answer, is_sensitive, approved, source)
+             values ($1,$2,$3,$4,$5,$6,true,'user')
+             on conflict (user_id, question_key) do update set answer = excluded.answer, approved = true, source = 'user', updated_at = now()`,
+            [userId, x.question.slice(0, 1000), questionKey(x.question), category, x.answer.slice(0, 5000), isSensitive(category)],
+          );
+        }
+        // Self-identification and citizenship answers become the person's profile answers for every later form.
+        const screening = Object.assign({}, ...report.data.answers.map((x) => screeningFromAnswer(x.question, x.answer) ?? {}));
+        if (Object.keys(screening).length) {
+          await c.query(`update candidate_profiles set screening = coalesce(screening, '{}'::jsonb) || $2::jsonb, version = version + 1 where user_id = $1`, [userId, JSON.stringify(screening)]);
+        }
+        await logEvent(c, a, 'answers_learned', 'extension', { message: `Saved ${report.data.answers.length} answer(s) you gave for reuse` });
+        if (report.data.resume && a.state === 'AWAITING_REVIEW') {
+          await transition(c, a, 'IN_PROGRESS', 'extension', {
+            type: 'answers_provided',
+            message: 'You answered the remaining questions; continuing',
+            patch: { intervention: null, lease_expires_at: new Date(Date.now() + RETRY_POLICY.leaseSeconds * 1000) },
+          });
+          return { ok: true, state: 'IN_PROGRESS' };
+        }
+        return { ok: true, state: a.state };
       }
 
       case 'ready_for_review': {

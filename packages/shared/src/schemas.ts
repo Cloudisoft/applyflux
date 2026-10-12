@@ -71,6 +71,8 @@ export const ScreeningAnswers = z.object({
   sexualOrientation: optionalText(80),
   pronouns: optionalText(40),
   over18: yesNo,
+  /** For "Are you a U.S. citizen?"-style questions (asked of the person's own country). */
+  citizen: yesNo,
   backgroundCheck: yesNo,
   drugTest: yesNo,
   felonyConviction: yesNo,
@@ -360,6 +362,14 @@ export const ExtensionReport = z.discriminatedUnion('type', [
     }),
   }),
   z.object({ type: z.literal('verification_resolved'), data: VerificationEvidence }),
+  /** The person answered questions ApplyFlux could not, in the form itself: remember them, then carry on. */
+  z.object({
+    type: z.literal('answers_provided'),
+    data: z.object({
+      answers: z.array(z.object({ question: z.string().min(1).max(1000), answer: z.string().min(1).max(5000) })).max(60),
+      resume: z.boolean().default(true),
+    }),
+  }),
   z.object({ type: z.literal('ready_for_review'), data: z.object({ fields: z.array(ReportedField).max(400), pageUrl: z.string().max(2000) }) }),
   z.object({ type: z.literal('submit_attempted'), data: z.object({ pageUrl: z.string().max(2000) }) }),
   z.object({ type: z.literal('submission_result'), data: SubmissionEvidence }),

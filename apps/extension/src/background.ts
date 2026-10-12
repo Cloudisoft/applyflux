@@ -85,12 +85,13 @@ async function chime() {
   }
 }
 
-async function alertUser(a: Active, kind: 'verification' | 'review' | 'auth', reminder = false) {
+async function alertUser(a: Active, kind: 'verification' | 'review' | 'auth' | 'answers', reminder = false) {
   const job = `${a.task.job.title} at ${a.task.job.company}`;
   const text = {
     verification: { title: reminder ? 'Still waiting: quick verification' : 'Quick verification needed', message: `${job}: tick the check in the highlighted spot. ApplyFlux continues by itself.` },
     review: { title: 'Ready for your review', message: `${job} is filled in. Check it and submit.` },
     auth: { title: 'Sign-in needed', message: `${job}: sign in to the site, then ApplyFlux can continue.` },
+    answers: { title: 'A question needs your answer', message: `${job}: answer the highlighted question(s). ApplyFlux remembers your answer and finishes the application.` },
   }[kind];
   chrome.notifications.create(`af:${a.applicationId}`, {
     type: 'basic',
@@ -303,6 +304,11 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
 
 async function handleContent(msg: ContentToBackground, sender: chrome.runtime.MessageSender) {
   if (msg.type === 'af:save_job') return api('/jobs', { body: msg.job });
+  if (msg.type === 'af:save_jobs') {
+    const out = await api('/jobs/save', { body: { jobs: msg.jobs }, timeoutMs: 120_000 });
+    setTimeout(tick, 500); // newly queued jobs start right away when Auto Apply is running
+    return out;
+  }
   if (msg.type === 'af:ready') return { ok: true };
   const active = (await getActives())[msg.applicationId];
   if (!active || sender.tab?.id !== active.tabId) throw new Error('Not an active application tab');
@@ -330,7 +336,7 @@ async function handleContent(msg: ContentToBackground, sender: chrome.runtime.Me
         await chrome.tabs.update(active.tabId, { active: true }).catch(() => {});
         await alertUser(active, 'verification');
       } else if (kind === 'review') {
-        await alertUser(active, 'review');
+        await alertUser(active, r.type === 'intervention' && /need your answer/i.test(r.data.message) ? 'answers' : 'review');
       } else if (kind === 'auth') {
         await alertUser(active, 'auth');
       }
@@ -385,6 +391,13 @@ async function handlePopup(msg: { type: string; code?: string; apiBase?: string 
     case 'popup:focus': {
       const a = await mostUrgent();
       if (a) await focusApplication(a);
+      return { ok: true };
+    }
+    case 'popup:clip': {
+      // Add the Save button to the current tab (any site), on request from the popup.
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) throw new Error('No tab to save from');
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['clip.js'] });
       return { ok: true };
     }
     case 'popup:tick':

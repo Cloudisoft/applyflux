@@ -324,3 +324,21 @@ describe('link questions', () => {
   });
 });
 
+describe('common screening questions', () => {
+  const p = autofill({ screening: ScreeningAnswers.parse({ citizen: true }) });
+  it('"How did you hear" defaults to Google, then social media', () => {
+    expect(answerFromProfile('How did you hear about this position?', ['Referral', 'Google', 'Social Media'], p).answer).toBe('Google');
+    expect(answerFromProfile('How did you hear about us?', ['Referral', 'Social Media', 'Other'], p).answer).toBe('Social Media');
+    expect(answerFromProfile('How did you hear about this job?', undefined, p).answer).toBe('Google');
+  });
+  it('"Have you worked here before" is No unless the company is in the work history', () => {
+    expect(answerFromProfile('Have you ever worked for Roblox before?', ['Yes', 'No'], p).answer).toBe('No');
+    expect(answerFromProfile('Have you previously been employed by Analytical Engines?', ['Yes', 'No'], autofill({ experiences: [{ company: 'Analytical Engines', title: 'Engineer', location: null, startDate: null, endDate: null, isCurrent: true, description: null, verified: true }] })).answer).toBe('Yes');
+    // Skill questions are not employment questions.
+    expect(answerFromProfile('Have you worked with Selenium WebDriver?', ['Yes', 'No'], p).answer).not.toBe('No');
+  });
+  it('citizenship uses the person\'s saved answer', () => {
+    expect(answerFromProfile('Are you a U.S. citizen?', ['Yes', 'No'], p).answer).toBe('Yes');
+  });
+});
+
