@@ -35,6 +35,15 @@ export async function fillField(field: DetectedField, value: string): Promise<Fi
         return { ok: select.value === opt.value, value: m.option };
       }
       case 'radio': {
+        if (field.choices?.length) {
+          const labels = field.choices.map((b) => cleanText(b.textContent));
+          let chosen = matchOption(labels, value)?.option ?? null;
+          if (!chosen && /^(yes|no|true|false)$/i.test(value)) chosen = pickBooleanOption(labels, truthy(value));
+          if (!chosen) return { ok: false, value: null, reason: `No option matches "${value}"` };
+          click(field.choices[labels.indexOf(chosen)]);
+          await sleep(50);
+          return { ok: true, value: chosen };
+        }
         const group = field.group ?? [el as HTMLInputElement];
         const labels = group.map(optionLabel);
         let chosen = matchOption(labels, value)?.option ?? null;

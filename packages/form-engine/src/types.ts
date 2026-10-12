@@ -22,6 +22,8 @@ export interface DetectedField {
   element: HTMLElement;
   /** All elements in a radio / checkbox group. */
   group?: HTMLInputElement[];
+  /** Choice buttons standing in for a radio group (e.g. Ashby's Yes / No buttons). */
+  choices?: HTMLElement[];
   options?: string[];
   name?: string;
   autocomplete?: string;

@@ -31,6 +31,8 @@ export interface PlatformAdapter {
   addSectionButton?(doc: Document, section: 'experience' | 'education'): HTMLElement | null;
   mappingRules?: AdapterRule[];
   groupSelectors?: string[];
+  /** Containers whose short buttons (Yes / No ...) form a single-choice question. */
+  buttonChoiceSelector?: string;
   confirmationText?: RegExp[];
   confirmationUrl?: RegExp[];
   formSelector?: string;

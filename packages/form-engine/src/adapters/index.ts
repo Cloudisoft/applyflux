@@ -114,10 +114,13 @@ export const leverAdapter: PlatformAdapter = {
 export const ashbyAdapter: PlatformAdapter = {
   id: 'ashby',
   name: 'Ashby',
-  capabilities: { autofill: true, multiStep: false, attachments: true, autoSubmit: false },
+  capabilities: { autofill: true, multiStep: false, attachments: true, autoSubmit: true },
   testStatus: 'tested_fixture',
   matchesUrl: (u) => hostIs(u.hostname, 'ashbyhq.com'),
-  findForm: (d) => formWithInputs(d, 'form, [class*="ApplicationForm"]'),
+  // Ashby renders the form as divs (no <form>); its stable ashby-* class names identify the parts.
+  findForm: (d) => formWithInputs(d, '.ashby-application-form-container, form, [class*="ApplicationForm"]'),
+  buttonChoiceSelector: '.ashby-application-form-field-entry',
+  confirmationText: [/application (was )?(successfully )?submitted/i, /thank(s| you) for (applying|your application)/i],
   openApplication: (d) => {
     const tab = Array.from(d.querySelectorAll<HTMLElement>('a, button')).find((b) => /^application$/i.test(cleanText(b.textContent)));
     if (tab && !ashbyAdapter.findForm(d)) {
@@ -127,9 +130,10 @@ export const ashbyAdapter: PlatformAdapter = {
     return false;
   },
   nextButton: () => null,
-  submitButton: (d) => findButton(d, [/^submit application$/i, ...SUBMIT], NOT_SUBMIT),
+  submitButton: (d) => d.querySelector<HTMLElement>('.ashby-application-form-submit-button:not([disabled])') ?? findButton(d, [/^submit application$/i, ...SUBMIT], NOT_SUBMIT),
   mappingRules: [
     { match: (f) => f.name === '_systemfield_name', key: 'fullName' },
+    { match: (f) => f.name === '_systemfield_phone' || f.kind === 'tel', key: 'phone' },
     { match: (f) => f.name === '_systemfield_email', key: 'email' },
     { match: (f) => f.kind === 'file' && /_systemfield_resume/.test(f.name ?? f.element.id), key: 'resume' },
   ],
@@ -235,7 +239,15 @@ export const genericAdapter: PlatformAdapter = {
       }))
       .filter((x) => !x.login && x.n >= 3)
       .sort((a, b) => b.n - a.n);
-    return scored[0]?.f ?? null;
+    if (scored[0]) return scored[0].f;
+    // Many modern career sites render the form as plain divs: start from the submit button and widen
+    // to the smallest container holding at least three fields.
+    const submit = findButton(d, SUBMIT, NOT_SUBMIT);
+    for (let n = submit?.parentElement ?? null; n && n !== d.body; n = n.parentElement) {
+      const fields = n.querySelectorAll('input:not([type=hidden]):not([type=search]), textarea, select');
+      if (fields.length >= 3 && !n.querySelector('input[type=password]')) return n as HTMLElement;
+    }
+    return null;
   },
   /**
    * Job boards and career pages: follow the "Apply" link to the employer's form. Links that would open a new tab are

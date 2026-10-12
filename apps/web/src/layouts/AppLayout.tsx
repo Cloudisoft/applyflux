@@ -27,7 +27,7 @@ import { Logo, ThemeToggle } from '@/components/brand';
 import { Badge, Spinner } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { useApplications, useAutomation, useMe, useNotifications, useRealtime } from '@/lib/queries';
-import { focusExtensionTab } from '@/lib/extension';
+import { focusExtensionTab, pingExtension } from '@/lib/extension';
 import { cn, initials } from '@/lib/utils';
 
 const NAV: Array<{ group: string; items: Array<{ to: string; label: string; icon: React.ElementType; end?: boolean }> }> = [
@@ -210,6 +210,7 @@ export function AppLayout() {
               <Badge tone="neutral">Note</Badge> AI drafting isn't configured on this server, so cover letters and open-ended answers need your input. Everything else works.
             </div>
           )}
+          <ExtensionUpdateBanner />
           <NeedsYouBanner />
           <Outlet />
         </main>
@@ -241,6 +242,33 @@ function NeedsYouBanner() {
       >
         Go to the tab
       </button>
+    </div>
+  );
+}
+
+const newer = (a: string, b: string) => {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0);
+  return false;
+};
+
+/** An unpacked extension never updates itself: tell the person when theirs is older than this server's. */
+function ExtensionUpdateBanner() {
+  const { data: me } = useMe();
+  const [installed, setInstalled] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    pingExtension().then((r) => setInstalled(r?.version ?? null));
+  }, []);
+  const latest = me?.extensionVersion;
+  if (!latest || !installed || !newer(latest, installed)) return null;
+  return (
+    <div role="status" className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-brand/40 bg-brand-soft/50 px-4 py-3 text-sm">
+      <span className="min-w-0 flex-1">
+        <b>Update your ApplyFlux extension</b>
+        <span className="text-muted"> · you have v{installed}, the latest is v{latest} with fixes for filling forms. Download it, then in chrome://extensions remove the old one and load the new folder.</span>
+      </span>
+      <a href="/downloads/applyflux-agent.zip" download className="rounded-xl bg-brand px-3 py-1.5 font-semibold text-white hover:opacity-90">Download v{latest}</a>
     </div>
   );
 }

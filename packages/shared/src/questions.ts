@@ -139,7 +139,7 @@ export function answerFromProfile(
   const screening = screeningAnswer(question, options, profile);
   if (screening) return screening;
 
-  if (/country of residence|current country|where do you (currently )?(live|reside)|country (are you )?(currently )?(based|located) in/i.test(question)) {
+  if (/country of residence|current country|where do you (currently )?(live|reside)|country (are you )?(currently )?(based|located) in|which country (do|will) you (intend|plan|expect)?\s*(to )?work from|country (you )?(will|would|intend to) work (from|in)/i.test(question)) {
     if (!profile.country || !verified.has('country')) return none('Country not verified in your profile');
     if (!options?.length) return { answer: profile.country, confidence: 0.9, needsUser: false };
     const m = matchOption(options, profile.country);

@@ -46,6 +46,8 @@ function groupInfo(el: Element, selectors: string[]): { section: 'experience' | 
 
 export interface DetectOptions {
   groupSelectors?: string[];
+  /** Question containers whose buttons are the answer choices (see PlatformAdapter.buttonChoiceSelector). */
+  buttonChoiceSelector?: string;
   /** Restrict detection to a subtree (the application form). */
   root?: ParentNode;
 }
@@ -63,8 +65,37 @@ export function detectFields(doc: Document, opts: DetectOptions = {}): DetectedF
     return n ? `${k}#${n}` : k;
   };
 
+  // Questions answered by clicking one of a few buttons (Yes / No). Their own hidden inputs are skipped below.
+  const choiceContainers = new Set<Element>();
+  if (opts.buttonChoiceSelector) {
+    for (const c of Array.from(root.querySelectorAll<HTMLElement>(opts.buttonChoiceSelector))) {
+      const buttons = Array.from(c.querySelectorAll<HTMLElement>('button')).filter((b) => {
+        const t = cleanText(b.textContent);
+        return t && t.length <= 40 && b.getAttribute('type') !== 'submit' && !/upload|browse|attach|remove|clear/i.test(t) && isVisible(b);
+      });
+      const textInputs = Array.from(c.querySelectorAll('input:not([type=checkbox]):not([type=radio]):not([type=hidden]), textarea, select')).filter(isVisible);
+      if (buttons.length < 2 || buttons.length > 6 || textInputs.length) continue;
+      choiceContainers.add(c);
+      const optionTexts = buttons.map((b) => cleanText(b.textContent));
+      const labelEl = Array.from(c.querySelectorAll('label, legend, [class*="title" i], [class*="question" i], p, span, div')).find((h) => !h.querySelector('button') && cleanText(h.textContent).length > 1 && !optionTexts.includes(cleanText(h.textContent)));
+      const label = cleanText(labelEl?.textContent || c.getAttribute('aria-label'));
+      const selected = buttons.find((b) => b.getAttribute('aria-pressed') === 'true' || b.getAttribute('aria-checked') === 'true' || b.getAttribute('data-state') === 'on' || /(^|[_\s-])(active|selected|checked)/i.test(b.className));
+      out.push({
+        key: uniqueKey(slug(label) || `choice_${out.length}`),
+        kind: 'radio',
+        label,
+        required: /\*\s*$/.test(label) || !!c.querySelector('[required], [aria-required="true"]'),
+        element: buttons[0],
+        choices: buttons,
+        options: optionTexts,
+        currentValue: selected ? cleanText(selected.textContent) : '',
+      });
+    }
+  }
+
   const controls = Array.from(root.querySelectorAll<HTMLElement>('input, select, textarea'));
   for (const el of controls) {
+    if (choiceContainers.size && Array.from(choiceContainers).some((c) => c.contains(el))) continue;
     const name = el.getAttribute('name') ?? '';
     const id = el.getAttribute('id') ?? '';
     if (CAPTCHA_FIELD.test(name) || CAPTCHA_FIELD.test(id)) continue;

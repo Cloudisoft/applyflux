@@ -308,3 +308,11 @@ describe('screening answers from the profile', () => {
     expect(answerFromProfile('Desired salary range', ['$50,000 - $80,000', '$80,000 - $100,000', '$100k+'], p).answer).toBe('$80,000 - $100,000');
   });
 });
+
+describe('location questions', () => {
+  it('answers which country the person will work from with their verified country', () => {
+    const p = autofill({ verifiedKeys: ['country'], country: 'United States' });
+    expect(answerFromProfile('Which country do you intend to work from?', undefined, p).answer).toBe('United States');
+  });
+});
+

@@ -295,3 +295,36 @@ describe('adapters', () => {
     expect(rep.every((r) => typeof r.key === 'string' && r.label.length > 0)).toBe(true);
   });
 });
+
+describe('Ashby (div-based form with Yes/No buttons)', () => {
+  it('finds the form without a <form> tag, fills profile fields and clicks the right Yes/No button', async () => {
+    const doc = load('ashby.html', 'https://jobs.ashbyhq.com/acme/123/application');
+    const adapter = selectAdapter(doc);
+    expect(adapter.id).toBe('ashby');
+    expect(adapter.findForm(doc)).not.toBeNull();
+    const clicked: string[] = [];
+    doc.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => clicked.push(b.textContent!)));
+    const ctx = { adapter, mode: 'auto' as const, profile: profile(), savedAnswers: [], files: {} };
+    const first = await runPass(doc, ctx);
+    expect((doc.getElementById('_systemfield_name') as HTMLInputElement).value).toBe('Ada Lovelace');
+    expect((doc.getElementById('_systemfield_email') as HTMLInputElement).value).toBe('ada@example.com');
+    // The sponsorship question is detected as a choice (not the hidden checkbox) and sent for an answer.
+    const q = first.pendingQuestions.find((f) => /sponsorship/.test(f.label))!;
+    expect(q.kind).toBe('radio');
+    expect(q.options).toEqual(['Yes', 'No']);
+    expect(first.pendingQuestions.some((f) => f.kind === 'checkbox')).toBe(false);
+    // The autofill uploader outside the application container is not treated as the resume field.
+    expect(first.results.filter((r) => r.field.kind === 'file').map((r) => r.field.element.id)).toEqual(['_systemfield_resume']);
+    const second = await runPass(doc, { ...ctx, resolved: { [q.key]: { key: q.key, answer: 'No', source: 'profile', confidence: 0.95, needsUser: false } } });
+    expect(clicked).toContain('No');
+    expect(clicked).not.toContain('Yes');
+    expect(second.hasSubmit).toBe(true);
+    expect(adapter.submitButton(doc)?.textContent).toBe('Submit Application');
+  });
+
+  it('finds div-based forms on unknown sites from the submit button', () => {
+    const doc = new JSDOM(`<!doctype html><div id="app"><div class="apply"><label for="a">First name</label><input id="a"><label for="b">Last name</label><input id="b"><label for="c">Email</label><input id="c" type="email"><button>Submit application</button></div></div>`, { url: 'https://careers.example.com/apply', pretendToBeVisual: true }).window.document;
+    expect(genericAdapter.findForm(doc)?.className).toBe('apply');
+  });
+});
+

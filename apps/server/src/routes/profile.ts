@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { assessProfile } from '@applyflux/shared';
+import { EXTENSION_VERSION } from '@applyflux/shared';
 import type { AppContext } from '../context';
 import { camel, one, tx } from '../db';
 import { ah } from '../lib/errors';
@@ -47,6 +48,7 @@ export function profileRoutes(ctx: AppContext) {
             sandboxTested: (sandbox!.n as number) > 0,
           },
           aiConfigured: ctx.ai.configured,
+          extensionVersion: EXTENSION_VERSION,
         },
       });
     }),

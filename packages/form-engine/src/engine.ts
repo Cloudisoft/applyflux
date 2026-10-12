@@ -74,7 +74,7 @@ export async function runPass(doc: Document, ctx: EngineContext): Promise<PassRe
   // Never type into a page that is asking for a human.
   if (blockedByChallenge || authWall || !form) return base;
 
-  const fields = detectFields(doc, { root: form, groupSelectors: adapter.groupSelectors });
+  const fields = detectFields(doc, { root: form, groupSelectors: adapter.groupSelectors, buttonChoiceSelector: adapter.buttonChoiceSelector });
   const saved = new Map(ctx.savedAnswers.map((a) => [a.questionKey, a]));
   const results: FieldResult[] = [];
 

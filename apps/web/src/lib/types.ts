@@ -6,6 +6,8 @@ export interface Me {
   assessment: ProfileAssessment;
   setup: { hasResume: boolean; extensionConnected: boolean; sandboxTested: boolean };
   aiConfigured: boolean;
+  /** Latest extension version this server ships. */
+  extensionVersion?: string;
 }
 
 export type ProfileResponse = FullCandidateProfile & { assessment: ProfileAssessment; version: number };
