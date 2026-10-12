@@ -186,7 +186,7 @@ async function discover(ctx: AppContext, userId: string, startedAt: string): Pro
  * two days at their daily limit. Jobs they skipped or already applied to are never re-queued.
  */
 async function autoQueue(ctx: AppContext, userId: string, prefs: Record<string, any> | null): Promise<number> {
-  const daily = prefs?.daily_limit ?? 10;
+  const daily = prefs?.daily_limit ?? 200;
   const queuedNow = await one<{ n: number }>(ctx.db, `select count(*)::int as n from applications where user_id = $1 and state = 'QUEUED'`, [userId]);
   const room = Math.max(0, daily * 2 - (queuedNow?.n ?? 0));
   if (!room) return 0;

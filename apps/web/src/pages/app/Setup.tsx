@@ -106,7 +106,7 @@ function AutomationStep({ onNext }: { onNext: () => void }) {
   const { data } = useAutomation();
   const { data: me } = useMe();
   const [mode, setMode] = React.useState<'review' | 'assisted' | 'auto'>('assisted');
-  const [daily, setDaily] = React.useState(5);
+  const [daily, setDaily] = React.useState(200);
   React.useEffect(() => { if (data) { setMode(data.preferences.mode === 'auto' ? 'assisted' : data.preferences.mode); setDaily(data.preferences.dailyLimit); } }, [data]);
   const save = useAction(() => api.put('/automation/preferences', { ...data!.preferences, mode, dailyLimit: daily }), { invalidate: [qk.automation], onSuccess: onNext });
   const a = me?.assessment;

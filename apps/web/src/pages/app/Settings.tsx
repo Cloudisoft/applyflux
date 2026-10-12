@@ -177,7 +177,7 @@ export function AutomationSettings() {
         <Card>
           <CardHeader title="Limits & filters" />
           <div className="grid gap-5 p-5 sm:grid-cols-2">
-            <Field label="Daily application limit" htmlFor="as-daily"><Input id="as-daily" type="number" min={1} max={200} value={p.dailyLimit} onChange={(e) => setP({ ...p, dailyLimit: Number(e.target.value) })} /></Field>
+            <Field label="Daily application limit" htmlFor="as-daily" hint="Up to 200 a day."><Input id="as-daily" type="number" min={1} max={200} value={p.dailyLimit} onChange={(e) => setP({ ...p, dailyLimit: Number(e.target.value) })} /></Field>
             <Field label="Applications at once" htmlFor="as-conc"><Input id="as-conc" type="number" min={1} max={5} value={p.maxConcurrency} onChange={(e) => setP({ ...p, maxConcurrency: Number(e.target.value) })} /></Field>
             <Field label={`Minimum match score: ${p.minMatchScore}`} htmlFor="as-score" hint="Used to suggest jobs for your queue."><input id="as-score" type="range" min={0} max={100} step={5} value={p.minMatchScore} onChange={(e) => setP({ ...p, minMatchScore: Number(e.target.value) })} className="w-full accent-[rgb(var(--brand))]" /></Field>
             <Field label="Default resume" htmlFor="as-resume"><Select id="as-resume" value={p.defaultResumeId ?? ''} onChange={(e) => setP({ ...p, defaultResumeId: e.target.value || null })}><option value="">Library default</option>{docs?.map((d) => <option key={d.id} value={d.id}>{d.title} (v{d.version})</option>)}</Select></Field>

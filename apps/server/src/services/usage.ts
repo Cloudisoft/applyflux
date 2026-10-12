@@ -21,7 +21,7 @@ export async function usageSummary(q: Queryable, userId: string) {
     [userId],
   );
   return {
-    applications: { usedToday: Number(r!.day_apps), reserved: Number(r!.reserved), dailyLimit: r!.daily_limit ?? 10 },
+    applications: { usedToday: Number(r!.day_apps), reserved: Number(r!.reserved), dailyLimit: r!.daily_limit ?? 200 },
   };
 }
 
