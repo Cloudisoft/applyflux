@@ -245,7 +245,7 @@ export async function claimNext(db: Db, config: Config, userId: string, connecti
     }
     const next = await one<AppRow & { url: string; title: string; company: string; ats_vendor: string | null; description: string | null; liveness: string }>(
       c,
-      `select a.*, j.url, j.title, j.company, j.ats_vendor, j.description, j.liveness from applications a join jobs j on j.id = a.job_id
+      `select a.*, coalesce(j.apply_url, j.url) as url, j.title, j.company, j.ats_vendor, j.description, j.liveness from applications a join jobs j on j.id = a.job_id
         where a.user_id = $1 and a.state = 'QUEUED' order by a.priority desc, a.created_at for update of a skip locked limit 1`,
       [userId],
     );

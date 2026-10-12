@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AUTO_SUBMIT_CONSENT_VERSION } from '@applyflux/shared';
 import { enqueueJobs, sweepExpiredLeases } from '../src/services/queue';
+import { fetchBoard } from '../src/services/discovery';
+import { upsertJob } from '../src/services/jobs';
 import { completeProfile, createUser, makeEnv, pairExtension, type TestEnv } from './helpers';
 
 let env: TestEnv;
@@ -274,6 +276,26 @@ describe('automatically queued jobs', () => {
     expect(task.job?.title).toBe('Senior QA Analyst');
     const designer = await env.ctx.db.query(`select a.state from applications a where a.job_id=$1`, [design]);
     expect(designer.rows[0].state).toBe('SKIPPED');
+  });
+});
+
+describe('Greenhouse jobs on company websites', () => {
+  it('opens Greenhouse\'s own application page, which the extension can fill, instead of the company page', async () => {
+    const { u, ext } = await setup('gh-embed@example.com');
+    await u.patch('/api/profile', { desiredTitles: ['Abuse Investigator'] });
+    const jobs = await fetchBoard('greenhouse', 'stripe', 'Stripe', async () => ({
+      status: 200,
+      json: { jobs: [{ id: 8172510, title: 'Abuse Investigator', absolute_url: 'https://stripe.com/jobs/search?gh_jid=8172510', location: { name: 'Remote' } }] },
+    }), { withContent: false });
+    expect(jobs[0].applyUrl).toBe('https://job-boards.greenhouse.io/embed/job_app?for=stripe&token=8172510');
+    const { id } = await upsertJob(env.ctx.db, u.id, { origin: 'discovery', ...jobs[0] });
+    await env.ctx.db.query(`update applications set state='SKIPPED' where user_id=$1 and state='QUEUED'`, [u.id]).catch(() => {});
+    await enqueueJobs(env.ctx.db, u.id, [id]);
+    await u.post('/api/automation/start');
+    let task: { job?: { url: string; atsVendor: string | null } } = {};
+    for (let i = 0; i < 8 && !task.job; i++) task = (await ext.post('/api/ext/next')).body.data;
+    expect(task.job?.url).toBe('https://job-boards.greenhouse.io/embed/job_app?for=stripe&token=8172510');
+    expect(task.job?.atsVendor).toBe('greenhouse');
   });
 });
 

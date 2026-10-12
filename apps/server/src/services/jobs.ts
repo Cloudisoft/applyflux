@@ -28,6 +28,7 @@ export interface JobInsert {
   salaryMax?: number | null;
   salaryCurrency?: string | null;
   postedAt?: string | null;
+  applyUrl?: string | null;
 }
 
 /** Insert or refresh a job; duplicates (same canonical URL) are merged, never duplicated. */
@@ -38,8 +39,8 @@ export async function upsertJob(q: Queryable, userId: string, j: JobInsert): Pro
   const r = await one<{ id: string; created: boolean }>(
     q,
     `insert into jobs (user_id, source_id, origin, external_id, url, url_key, fingerprint, company, title, location, workplace_type,
-        employment_type, salary_min, salary_max, salary_currency, description, posted_at, ats_vendor)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        employment_type, salary_min, salary_max, salary_currency, description, posted_at, ats_vendor, apply_url)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
      on conflict (user_id, url_key) do update set
         last_seen_at = now(),
         title = excluded.title,
@@ -47,12 +48,14 @@ export async function upsertJob(q: Queryable, userId: string, j: JobInsert): Pro
         description = coalesce(excluded.description, jobs.description),
         salary_min = coalesce(excluded.salary_min, jobs.salary_min),
         salary_max = coalesce(excluded.salary_max, jobs.salary_max),
+        apply_url = coalesce(excluded.apply_url, jobs.apply_url),
+        ats_vendor = coalesce(excluded.ats_vendor, jobs.ats_vendor),
         liveness = case when jobs.liveness = 'expired' and excluded.origin = 'source' then 'active' else jobs.liveness end
      returning id, (xmax = 0) as created`,
     [
       userId, j.sourceId ?? null, j.origin, j.externalId ?? null, j.url, key, fp, j.company.slice(0, 200), j.title.slice(0, 300),
       j.location ?? null, j.workplaceType ?? null, j.employmentType ?? null, j.salaryMin ?? null, j.salaryMax ?? null,
-      j.salaryCurrency ?? null, j.description?.slice(0, 60000) ?? null, j.postedAt ?? null, atsVendorOf(j.url),
+      j.salaryCurrency ?? null, j.description?.slice(0, 60000) ?? null, j.postedAt ?? null, j.applyUrl ? atsVendorOf(j.applyUrl) : atsVendorOf(j.url), j.applyUrl ?? null,
     ],
   );
   // Cross-source duplicate: same company/title/location from another URL.

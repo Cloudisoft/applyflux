@@ -21,6 +21,8 @@ export interface SourcedJob {
   salaryMax: number | null;
   salaryCurrency: string | null;
   postedAt: string | null;
+  /** Application form URL when it differs from the posting URL. */
+  applyUrl?: string | null;
 }
 
 export type SourceKind = 'greenhouse' | 'lever' | 'ashby';
@@ -117,9 +119,12 @@ export async function fetchBoard(kind: SourceKind, identifier: string, companyNa
       .filter((j) => j.absolute_url)
       .map((j) => {
         const location = j.location?.name ?? '';
+        // Company-hosted postings embed the form in a cross-origin frame; Greenhouse's standalone form is fillable.
+        const hosted = /(^|\.)greenhouse\.io$/.test(new URL(j.absolute_url).hostname);
         return {
           externalId: String(j.id),
           url: j.absolute_url,
+          applyUrl: hosted ? null : `https://job-boards.greenhouse.io/embed/job_app?for=${encodeURIComponent(identifier)}&token=${encodeURIComponent(String(j.id))}`,
           title: j.title ?? '',
           company: companyName,
           location: location || null,
