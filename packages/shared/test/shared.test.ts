@@ -316,3 +316,11 @@ describe('location questions', () => {
   });
 });
 
+describe('link questions', () => {
+  it('answers Portfolio with the person\'s own GitHub or LinkedIn when there is no portfolio', () => {
+    const p = autofill({ portfolioUrl: null, githubUrl: null, linkedinUrl: 'https://www.linkedin.com/in/ada', verifiedKeys: ['linkedinUrl'] });
+    expect(answerFromProfile('Portfolio*', undefined, p).answer).toBe('https://www.linkedin.com/in/ada');
+    expect(answerFromProfile('GitHub', undefined, autofill({ githubUrl: 'https://github.com/ada', verifiedKeys: ['githubUrl'] })).answer).toBe('https://github.com/ada');
+  });
+});
+

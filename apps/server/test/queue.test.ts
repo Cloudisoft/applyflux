@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AUTO_SUBMIT_CONSENT_VERSION } from '@applyflux/shared';
-import { sweepExpiredLeases } from '../src/services/queue';
+import { enqueueJobs, sweepExpiredLeases } from '../src/services/queue';
 import { completeProfile, createUser, makeEnv, pairExtension, type TestEnv } from './helpers';
 
 let env: TestEnv;
@@ -258,3 +258,22 @@ describe('auto mode safeguards', () => {
     expect(t2.allowSubmit).toBe(false); // greenhouse not enabled for auto-submit in this deployment
   });
 });
+
+describe('automatically queued jobs', () => {
+  it('skips a job ApplyFlux queued itself once it no longer fits the target titles, but keeps fitting ones', async () => {
+    const { u, ext } = await setup('relevance@example.com');
+    await u.patch('/api/profile', { desiredTitles: ['QA Analyst', 'Software Test Engineer'] });
+    const design = (await u.post('/api/jobs/import', { url: 'https://example.com/jobs/design', title: 'Senior Product Designer', company: 'Acme' })).body.data.id;
+    const qa = (await u.post('/api/jobs/import', { url: 'https://example.com/jobs/qa', title: 'Senior QA Analyst', company: 'Acme' })).body.data.id;
+    const q = await enqueueJobs(env.ctx.db, u.id, [design, qa], { actor: 'system' });
+    expect(q.map((r) => r.status), JSON.stringify(q)).toEqual(['queued', 'queued']);
+    await u.post('/api/automation/start');
+    // Claim until a job is handed out; everything auto-queued that does not fit is skipped on the way.
+    let task: { job?: { title: string } } = {};
+    for (let i = 0; i < 8 && !task.job; i++) task = (await ext.post('/api/ext/next')).body.data;
+    expect(task.job?.title).toBe('Senior QA Analyst');
+    const designer = await env.ctx.db.query(`select a.state from applications a where a.job_id=$1`, [design]);
+    expect(designer.rows[0].state).toBe('SKIPPED');
+  });
+});
+

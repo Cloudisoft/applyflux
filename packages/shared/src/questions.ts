@@ -139,6 +139,17 @@ export function answerFromProfile(
   const screening = screeningAnswer(question, options, profile);
   if (screening) return screening;
 
+  // Link questions ("Portfolio", "Website", "GitHub", "LinkedIn profile"): the person's own links, with a sensible fallback.
+  if (!options?.length && /^(portfolio|personal (web)?site|website|github|linkedin|online profile|portfolio (link|url)|link to (your )?(portfolio|work))\b/i.test(question.replace(/\*|\(.*?\)/g, '').trim())) {
+    const ql = question.toLowerCase();
+    const order: Array<keyof AutofillProfile> = /github/.test(ql) ? ['githubUrl', 'portfolioUrl', 'linkedinUrl'] : /linkedin/.test(ql) ? ['linkedinUrl'] : ['portfolioUrl', 'githubUrl', 'linkedinUrl'];
+    for (const k of order) {
+      const v = profile[k];
+      if (typeof v === 'string' && v && verified.has(k as string)) return { answer: v, confidence: 0.9, needsUser: false };
+    }
+    return none('No link of this kind in your profile');
+  }
+
   if (/country of residence|current country|where do you (currently )?(live|reside)|country (are you )?(currently )?(based|located) in|which country (do|will) you (intend|plan|expect)?\s*(to )?work from|country (you )?(will|would|intend to) work (from|in)/i.test(question)) {
     if (!profile.country || !verified.has('country')) return none('Country not verified in your profile');
     if (!options?.length) return { answer: profile.country, confidence: 0.9, needsUser: false };

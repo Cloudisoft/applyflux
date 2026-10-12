@@ -164,7 +164,8 @@ export async function runPass(doc: Document, ctx: EngineContext): Promise<PassRe
       res.reason = 'Sensitive question — needs your answer';
       continue;
     }
-    const lowConfidence = resolved.confidence < (OPTION_KINDS.has(field.kind) ? 0.85 : 0.7);
+    // Long free-text answers have already passed the server's fabrication check; a modest confidence is fine there.
+    const lowConfidence = resolved.confidence < (OPTION_KINDS.has(field.kind) ? 0.85 : field.kind === 'textarea' ? 0.45 : 0.7);
     const isDraft = resolved.source === 'ai';
     if (ctx.mode === 'auto' && lowConfidence) {
       res.status = field.required ? 'needs_input' : 'skipped';

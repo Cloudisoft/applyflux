@@ -10,6 +10,7 @@ import {
   type ExecutionTask,
   type ExtensionReport,
   type InterventionType,
+  titleFit,
 } from '@applyflux/shared';
 import { judgeEvidence } from '@applyflux/form-engine';
 import { autoSubmitPlatforms, type Config } from '../config';
@@ -258,6 +259,17 @@ export async function claimNext(db: Db, config: Config, userId: string, connecti
       await transition(c, next, 'IN_PROGRESS', 'system', { type: 'claimed' });
       await transition(c, next, 'SKIPPED', 'system', { type: 'skipped', message: excl });
       return { idle: true as const, reason: `Skipped one application: ${excl}` };
+    }
+    // Jobs ApplyFlux queued by itself must still fit the person's current target titles (they may have changed).
+    const auto = await one<{ n: number }>(c, `select count(*)::int as n from application_events where application_id=$1 and type='auto_queued'`, [next.id]);
+    if (auto?.n) {
+      const titles = (await one<{ desired_titles: string[] }>(c, 'select desired_titles from candidate_profiles where user_id=$1', [userId]))?.desired_titles ?? [];
+      if (titles.length && titleFit(next.title, titles) === 0) {
+        const why = `No longer matches your target titles (${titles.slice(0, 3).join(', ')})`;
+        await transition(c, next, 'IN_PROGRESS', 'system', { type: 'claimed' });
+        await transition(c, next, 'SKIPPED', 'system', { type: 'skipped', message: why });
+        return { idle: true as const, reason: `Skipped one application: ${why}` };
+      }
     }
 
     const lease = new Date(Date.now() + RETRY_POLICY.leaseSeconds * 1000);

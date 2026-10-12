@@ -87,6 +87,11 @@ export function valueFor(key: MappedKey, field: DetectedField, p: AutofillProfil
   let raw = p[pk] as unknown;
   if (key === 'availableFrom') raw = dateFor(field, (raw as string) ?? null);
   if (key === 'yearsExperience' && typeof raw === 'number') raw = String(Math.floor(raw));
+  // A required portfolio / website link with no portfolio on file: use the person's own GitHub or LinkedIn.
+  if ((key === 'portfolioUrl' || key === 'websiteUrl') && !raw && field.required) {
+    if (p.githubUrl) return { value: p.githubUrl, verified: verified.has('githubUrl') };
+    if (p.linkedinUrl) return { value: p.linkedinUrl, verified: verified.has('linkedinUrl') };
+  }
   const value = raw == null || raw === '' ? null : String(raw);
   const vKey = key === 'websiteUrl' ? 'portfolioUrl' : key === 'preferredName' ? 'firstName' : pk;
   return { value, verified: verified.has(vKey as string), reason: value ? undefined : `Your profile has no ${String(pk)}` };

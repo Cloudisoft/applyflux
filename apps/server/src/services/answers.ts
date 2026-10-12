@@ -40,6 +40,11 @@ export async function resolveAnswers(db: Db, ai: AiClient, userId: string, req: 
   for (const q of req.questions) {
     const key = questionKey(q.label);
     const category = classifyQuestion(q.label);
+    // Optional voluntary self-identification (the diversity survey): leave it blank and move on.
+    if (!q.required && ['demographic', 'disability', 'veteran'].includes(category)) {
+      out.push({ key: q.key, answer: null, source: 'none', confidence: 0, needsUser: false, reason: 'Optional diversity question: left blank' });
+      continue;
+    }
     const s = saved.get(key);
     if (s?.approved) {
       const opt = q.options?.length ? matchOption(q.options, s.answer)?.option : s.answer;
@@ -52,6 +57,11 @@ export async function resolveAnswers(db: Db, ai: AiClient, userId: string, req: 
     const fromProfile = answerFromProfile(q.label, q.options, autofill);
     if (fromProfile.answer && !fromProfile.needsUser) {
       out.push({ key: q.key, answer: fromProfile.answer, source: 'profile', confidence: fromProfile.confidence, needsUser: false });
+      continue;
+    }
+    // Optional questions are only filled when the answer is already known; no AI drafting, no prompts to the person.
+    if (!q.required) {
+      out.push({ key: q.key, answer: null, source: 'none', confidence: 0, needsUser: false, reason: 'Optional question: skipped' });
       continue;
     }
     if (isSensitive(category)) {

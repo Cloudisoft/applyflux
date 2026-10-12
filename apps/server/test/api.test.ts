@@ -233,13 +233,16 @@ describe('answer engine', () => {
         { key: 'auth', label: 'Are you legally authorized to work in the United Kingdom?', kind: 'radio', options: ['Yes', 'No'], required: true },
         { key: 'gender', label: 'What is your gender?', kind: 'select', options: ['Female', 'Male', 'Decline to self-identify'], required: false },
         { key: 'why', label: 'Why do you want to work at Northwind Labs?', kind: 'textarea', required: true },
-        { key: 'award', label: 'Tell us about an award you have won', kind: 'textarea', required: false },
+        { key: 'award', label: 'Tell us about an award you have won', kind: 'textarea', required: true },
+        { key: 'hobby', label: 'Anything else you would like to share?', kind: 'textarea', required: false },
       ],
     });
     const by = Object.fromEntries(res.body.data.map((a: { key: string }) => [a.key, a]));
     expect(by.heard).toMatchObject({ answer: 'Company website', source: 'saved', needsUser: false });
     expect(by.auth).toMatchObject({ answer: 'Yes', source: 'profile', needsUser: false });
-    expect(by.gender).toMatchObject({ answer: null, needsUser: true });
+    // Optional diversity questions are left blank (no prompt to the person); optional extras are skipped without AI.
+    expect(by.gender).toMatchObject({ answer: null, needsUser: false });
+    expect(by.hobby).toMatchObject({ answer: null, needsUser: false });
     expect(by.why).toMatchObject({ source: 'ai', needsUser: false });
     // Fabricated numbers are caught by the grounding guard.
     expect(by.award).toMatchObject({ source: 'ai', needsUser: true });
@@ -247,10 +250,11 @@ describe('answer engine', () => {
     const prompt = env.aiCalls[0].messages.find((m) => m.role === 'user')!.content;
     expect(prompt).not.toContain('gender');
     expect(prompt).not.toContain('legally authorized');
+    expect(prompt).not.toContain('Anything else you would like to share');
     // Drafts are saved for review but never auto-approved.
     const answers = (await u.get('/api/answers')).body.data;
     expect(answers.find((a: { question: string }) => a.question.startsWith('Why do you want'))).toMatchObject({ approved: false, source: 'ai_draft' });
-    expect(answers.find((a: { question: string }) => a.question === 'What is your gender?')).toMatchObject({ approved: false, answer: '' });
+    expect(answers.find((a: { question: string }) => a.question === 'What is your gender?')).toBeUndefined();
   });
 
   it('grounding guard flags unsupported numbers and credentials', () => {

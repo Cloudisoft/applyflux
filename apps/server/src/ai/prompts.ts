@@ -61,8 +61,13 @@ export function answerPrompt(
     { role: 'system', content: GUARDRAILS },
     {
       role: 'user',
-      content: `${factsBlock(facts)}\n\n${jobBlock(job)}\n\nAnswer each application question for the candidate. When options are given, the answer MUST be one option copied exactly; pick the option the facts best support. Otherwise follow each question's format (long answers are full, natural paragraphs; short answers are brief) and stay within maxLength. Motivation questions (why this company/role, tell us about yourself) are answerable: connect real experience from the facts to the job. Mark supported:false only when an honest answer needs a fact that is missing.
-Return JSON: {"answers":[{"key":string,"answer":string|null,"supported":boolean /* false if facts do not support an answer */,"confidence":number /* 0..1 */,"factsUsed":string[]}]}
+      content: `${factsBlock(facts)}\n\n${jobBlock(job)}\n\nAnswer each application question for the candidate. When options are given, the answer MUST be one option copied exactly; pick the option the facts best support. Otherwise follow each question's format (long answers are full, natural paragraphs; short answers are brief) and stay within maxLength. How to answer each kind of question:
+- Motivation (why this company/role, what excites you, tell us about yourself): connect real experience from the facts to this job.
+- Behavioural ("tell me about a time", "describe a situation", "share an example", "what did you like/dislike", "smallest and largest team"): answer in the first person from the candidate's real roles, responsibilities and work described in the facts — name the real employer and role, describe the kind of situation that work involves and how the candidate approaches it. Do NOT invent specific events, numbers, team sizes, outcomes, dates or people that are not in the facts; when a detail is unknown, speak to the candidate's approach instead of making one up.
+- Questions the candidate would ask the interviewer/recruiter: write 2-4 thoughtful questions about the role, team, success measures and next steps (no facts needed).
+- Opinion or working-style questions: answer naturally, consistent with the facts.
+Mark supported:false only when an honest answer requires a specific fact that is missing (for example a licence number, a portfolio link, a specific certification, or experience the candidate clearly does not have). A plain, true answer beats leaving a required question blank.
+Return JSON: {"answers":[{"key":string,"answer":string|null,"supported":boolean /* false if facts do not support an answer */,"confidence":number /* 0..1: 0.8 or higher when every statement in the answer is drawn from the facts (even if the facts are general); lower only when the answer relies on assumptions */,"factsUsed":string[]}]}
 
 Questions:
 ${qs}`,
