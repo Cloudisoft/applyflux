@@ -1,6 +1,6 @@
-import { matchOption, normalizeText, pickBooleanOption } from '@applyflux/shared';
+import { normalizeText, pickOption } from '@applyflux/shared';
 import { click, isVisible, setNativeValue, sleep, waitFor, cleanText } from './dom';
-import { optionLabel } from './detect';
+import { comboboxValue, optionLabel } from './detect';
 import type { DetectedField, FileAttachment } from './types';
 
 export interface FillOutcome {
@@ -20,11 +20,7 @@ export async function fillField(field: DetectedField, value: string): Promise<Fi
         const select = el as HTMLSelectElement;
         const opts = Array.from(select.options);
         const labels = opts.map((o) => cleanText(o.textContent));
-        let m = matchOption(labels, value);
-        if (!m && /^(yes|no|true|false)$/i.test(value)) {
-          const b = pickBooleanOption(labels, truthy(value));
-          if (b) m = { option: b, confidence: 0.9 };
-        }
+        let m = pickOption(labels, value);
         if (!m) {
           const byValue = opts.find((o) => normalizeText(o.value) === normalizeText(value));
           if (byValue) m = { option: cleanText(byValue.textContent), confidence: 0.9 };
@@ -37,8 +33,7 @@ export async function fillField(field: DetectedField, value: string): Promise<Fi
       case 'radio': {
         if (field.choices?.length) {
           const labels = field.choices.map((b) => cleanText(b.textContent));
-          let chosen = matchOption(labels, value)?.option ?? null;
-          if (!chosen && /^(yes|no|true|false)$/i.test(value)) chosen = pickBooleanOption(labels, truthy(value));
+          const chosen = pickOption(labels, value)?.option ?? null;
           if (!chosen) return { ok: false, value: null, reason: `No option matches "${value}"` };
           click(field.choices[labels.indexOf(chosen)]);
           await sleep(50);
@@ -46,8 +41,7 @@ export async function fillField(field: DetectedField, value: string): Promise<Fi
         }
         const group = field.group ?? [el as HTMLInputElement];
         const labels = group.map(optionLabel);
-        let chosen = matchOption(labels, value)?.option ?? null;
-        if (!chosen && /^(yes|no|true|false)$/i.test(value)) chosen = pickBooleanOption(labels, truthy(value));
+        const chosen = pickOption(labels, value)?.option ?? null;
         if (!chosen) return { ok: false, value: null, reason: `No option matches "${value}"` };
         const input = group[labels.indexOf(chosen)];
         if (!input.checked) click(input);
@@ -69,7 +63,7 @@ export async function fillField(field: DetectedField, value: string): Promise<Fi
         const wanted = value.split(/\s*[;|]\s*|\s*,\s*(?=[A-Z])/).filter(Boolean);
         const picked: string[] = [];
         for (const w of wanted) {
-          const m = matchOption(labels, w);
+          const m = pickOption(labels, w);
           if (!m) return { ok: false, value: null, reason: `No option matches "${w}"` };
           const input = group[labels.indexOf(m.option)];
           if (!input.checked) click(input);
@@ -97,27 +91,58 @@ export async function fillField(field: DetectedField, value: string): Promise<Fi
   }
 }
 
-/** Searchable select: type to filter, then click the confident option match. */
+const OPTION_SELECTOR = '[role="option"], [id*="-option-"], .select__option, [class*="__option" i]';
+
+/** Options currently shown for a searchable select (react-select, ARIA listbox, Greenhouse/Ashby/Lever widgets). */
+function menuOptions(input: HTMLInputElement): HTMLElement[] | null {
+  const doc = input.ownerDocument;
+  const id = input.getAttribute('aria-controls') || input.getAttribute('aria-owns');
+  const scope: ParentNode = (id && doc.getElementById(id)) || doc;
+  const opts = Array.from(scope.querySelectorAll<HTMLElement>(OPTION_SELECTOR)).filter(
+    (o) => isVisible(o) && !o.querySelector(OPTION_SELECTOR) && !/(^|_)(no-options|loading)/i.test(o.className) && cleanText(o.textContent).length > 0,
+  );
+  return opts.length ? opts : null;
+}
+
+/** Open the menu the way a person does: react-select listens for mousedown on its control, others for focus/ArrowDown. */
+function openMenu(input: HTMLInputElement) {
+  const win = input.ownerDocument.defaultView!;
+  const control = input.closest<HTMLElement>('[class*="control" i]') ?? input.parentElement;
+  input.focus();
+  for (const t of [control, input]) t?.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+  input.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, bubbles: true }));
+}
+
+function closeMenu(input: HTMLInputElement) {
+  const win = input.ownerDocument.defaultView!;
+  input.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+  input.blur();
+}
+
+/** Searchable select: open it, pick the option that means the answer; type to filter only for long or async lists. */
 async function fillCombobox(field: DetectedField, value: string): Promise<FillOutcome> {
   const input = field.element as HTMLInputElement;
-  const doc = input.ownerDocument;
-  click(input);
-  setNativeValue(input, value);
-  const listFor = () => {
-    const id = input.getAttribute('aria-controls') || input.getAttribute('aria-owns');
-    const list = id ? doc.getElementById(id) : null;
-    const scope: ParentNode = list ?? doc;
-    const opts = Array.from(scope.querySelectorAll<HTMLElement>('[role="option"]')).filter(isVisible);
-    return opts.length ? opts : null;
-  };
-  const options = await waitFor(listFor, 2000);
-  if (!options) return { ok: false, value: null, reason: 'No options appeared for this searchable field' };
-  const labels = options.map((o) => cleanText(o.textContent));
-  const m = matchOption(labels, value);
-  if (!m) return { ok: false, value: null, reason: `No option matches "${value}"` };
-  click(options[labels.indexOf(m.option)]);
-  await sleep(50);
-  return { ok: true, value: m.option };
+  const labelsOf = (opts: HTMLElement[]) => opts.map((o) => cleanText(o.textContent));
+  openMenu(input);
+  let options = await waitFor(() => menuOptions(input), 1500);
+  let m = options ? pickOption(labelsOf(options), value) : null;
+  if (!m) {
+    // Long lists (countries, schools) and lists loaded as you type: filter by the answer's leading words.
+    setNativeValue(input, value.split(/[,(]/)[0].trim().slice(0, 40));
+    await sleep(150);
+    options = await waitFor(() => menuOptions(input), 2500);
+    m = options ? pickOption(labelsOf(options), value) : null;
+  }
+  if (!options || !m) {
+    if (input.value) setNativeValue(input, '');
+    closeMenu(input);
+    return { ok: false, value: null, reason: options ? `No option matches "${value}"` : 'No options appeared for this searchable field' };
+  }
+  click(options[labelsOf(options).indexOf(m.option)]);
+  await sleep(80);
+  closeMenu(input);
+  const shown = comboboxValue(input);
+  return { ok: true, value: shown || m.option };
 }
 
 /** Attach a file to an <input type=file> the way a user drop would. */

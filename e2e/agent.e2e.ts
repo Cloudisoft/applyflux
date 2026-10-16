@@ -309,6 +309,9 @@ test('Questions only the person can answer: the page stays theirs while they typ
   }
   expect(await page.inputValue('#tools')).toBe(answer);
   await page.selectOption('#shift', { label: 'Late (2pm–10pm)' });
+  // A searchable dropdown (react-select): the choice is shown in its own element, not in the input.
+  await page.click('.rs .select__control');
+  await page.click('.select__option:has-text("I am not a protected veteran")');
 
   const done = await waitForState(api, job.applicationId, ['SUBMITTED', 'SUBMISSION_UNVERIFIED', 'NEEDS_ATTENTION', 'FAILED']);
   expect(done.state, JSON.stringify(done.intervention ?? done.lastError)).toBe('SUBMITTED');
@@ -320,6 +323,34 @@ test('Questions only the person can answer: the page stays theirs while they typ
   expect(second.state, JSON.stringify(second.intervention ?? second.lastError)).toBe('SUBMITTED');
   expect(second.events.map((e: { type: string }) => e.type)).not.toContain('intervention');
   expect(await submissions('ask-person-again', next.ref)).toBe(1);
+  // The veteran answer was learned by meaning ("No"), so the second form's differently worded dropdown
+  // was answered too (the sandbox form refuses to submit while that dropdown is empty).
+  const prof = await api.get('/profile');
+  expect((prof.screening ?? prof.profile?.screening)?.veteranStatus).toBe('No');
+  await api.post('/automation/stop');
+});
+
+test('If the person clicks Submit themselves, their answers are still saved and the submission tracked', async () => {
+  const api = await newUser('selfsubmit@example.com');
+  await pairViaPopup(api);
+  await api.put('/automation/preferences', { mode: 'auto', dailyLimit: 10, maxConcurrency: 1, minMatchScore: 0, excludedCompanies: [], excludedKeywords: [] });
+  await api.post('/automation/consent', { version: AUTO_SUBMIT_CONSENT_VERSION, accepted: true });
+  const job = await queue(api, 'ask-person');
+  await api.post('/automation/start');
+  await waitForState(api, job.applicationId, ['AWAITING_REVIEW']);
+  const page = await sandboxPage(job.ref);
+  await page.fill('#tools', 'Freshdesk for three years.');
+  await page.selectOption('#shift', { label: 'Weekend' });
+  await page.click('.rs .select__control');
+  await page.click('.select__option:has-text("I don\'t wish to answer")');
+  await page.click('button[data-action=submit]');
+
+  const done = await waitForState(api, job.applicationId, ['SUBMITTED', 'SUBMISSION_UNVERIFIED', 'NEEDS_ATTENTION', 'FAILED']);
+  expect(done.state, JSON.stringify(done.intervention ?? done.lastError)).toBe('SUBMITTED');
+  expect(await submissions('ask-person', job.ref)).toBe(1);
+  const saved = JSON.stringify(await api.get('/answers'));
+  expect(saved).toContain('Freshdesk for three years.');
+  expect(saved).toContain('Weekend');
   await api.post('/automation/stop');
 });
 

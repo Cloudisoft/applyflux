@@ -24,6 +24,8 @@ function target(): Element | null {
 
 export function showGuide(title: string, detail: string, opts: { highlightCaptcha?: boolean } = {}) {
   hideGuide();
+  // The person hid this message on this page: keep it hidden (the extension can be injected more than once).
+  if (document.documentElement.dataset.afGuideHidden === title) return;
   host = document.createElement('div');
   host.setAttribute('data-applyflux-guide', '');
   const root = host.attachShadow({ mode: 'closed' });
@@ -42,7 +44,11 @@ export function showGuide(title: string, detail: string, opts: { highlightCaptch
     <div class="bar" role="status" aria-live="polite"><div class="dot"></div><div><b></b><span></span></div><button type="button" aria-label="Hide">Hide</button></div>`;
   root.querySelector('b')!.textContent = `ApplyFlux · ${title}`;
   root.querySelector('span')!.textContent = detail;
-  root.querySelector('button')!.addEventListener('click', hideGuide);
+  root.querySelector('button')!.addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.documentElement.dataset.afGuideHidden = title;
+    hideGuide();
+  });
   if (opts.highlightCaptcha) {
     ring = document.createElement('div');
     ring.className = 'ring';
@@ -68,6 +74,8 @@ export function hideGuide() {
   if (timer) window.clearInterval(timer);
   timer = undefined;
   host?.remove();
+  // Also remove banners drawn by an earlier injection of this script, which this copy has no handle on.
+  document.querySelectorAll('[data-applyflux-guide]').forEach((el) => el.remove());
   host = null;
   ring = null;
 }

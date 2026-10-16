@@ -174,6 +174,7 @@ export function detectFields(doc: Document, opts: DetectOptions = {}): DetectedF
       const listId = el.getAttribute('aria-controls') || el.getAttribute('aria-owns');
       const list = listId ? doc.getElementById(listId) : null;
       if (list) field.options = Array.from(list.querySelectorAll('[role="option"]')).map((o) => cleanText(o.textContent));
+      field.currentValue = comboboxValue(el as HTMLElement);
     }
     out.push(field);
   }
@@ -181,6 +182,27 @@ export function detectFields(doc: Document, opts: DetectOptions = {}): DetectedF
 }
 
 /** Label of one radio/checkbox option (not the question). */
+const SHOWN_VALUE = '[class*="single-value" i], [class*="singleValue" i], [class*="multi-value__label" i], [class*="multiValue" i] [class*="label" i]';
+
+/**
+ * The value chosen in a searchable select. Widgets like react-select show the choice in a separate element
+ * and keep the input for search text, so the input's own value is not the answer there.
+ */
+export function comboboxValue(el: HTMLElement): string {
+  let node: HTMLElement | null = el.parentElement;
+  for (let i = 0; node && i < 5; i++, node = node.parentElement) {
+    // Stop before reaching a container that holds other fields too.
+    if (node.querySelectorAll('input:not([type=hidden]), select, textarea').length > 1) break;
+    const shown = Array.from(node.querySelectorAll(SHOWN_VALUE)).map((e) => cleanText(e.textContent)).filter(Boolean);
+    if (shown.length) return shown.join(', ');
+    if (/(^|\s|_)(control|container)(\s|$|-)|select__control|select__container/i.test(node.className)) {
+      // A react-select style widget with nothing chosen yet.
+      return '';
+    }
+  }
+  return (el as HTMLInputElement).value ?? '';
+}
+
 export function optionLabel(input: HTMLInputElement): string {
   const doc = input.ownerDocument;
   if (input.id) {

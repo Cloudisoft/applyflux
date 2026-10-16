@@ -227,11 +227,54 @@ function salaryRangeContains(option: string, n: number): boolean {
 
 const DECLINE_OPTION = /decline|prefer not|don.?t wish|do not wish|choose not|rather not|not (to )?(answer|disclose|say|specify|self.?identify)|i don.?t want/i;
 
+const NEGATIVE = /\b(no|not|don'?t|do not|never|none|neither)\b/i;
+const REFERRAL_FALLBACKS = [/google/i, /search engine|internet search|web search|\bsearch\b/i, /social media|social network/i, /linkedin/i, /job board|job site|online|internet|website/i, /^other\b/i];
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * The option that means `value`, however the form words it: "No" -> "I am not a protected veteran",
+ * "Prefer not to say" -> "I don't wish to answer", "Google" -> "Search engine". Null when unsure.
+ */
+export function pickOption(options: string[], value: string): { option: string; confidence: number } | null {
+  const opts = options.filter((o) => o.trim() && !/^(select|choose|please select|--)/i.test(o.trim()));
+  if (!opts.length || !value.trim()) return null;
+  const direct = matchOption(opts, value);
+  if (direct) return direct;
+  const v = normalizeText(value).replace(/[.!]+$/, '').trim();
+  if (DECLINE_OPTION.test(v)) {
+    const d = opts.find((o) => DECLINE_OPTION.test(o));
+    if (d) return { option: d, confidence: 0.9 };
+  }
+  const yn = /^(yes|y|true)\b/.test(v) ? true : /^(no|n|false)\b/.test(v) ? false : null;
+  if (yn != null) {
+    const b = pickBooleanOption(opts, yn);
+    if (b) return { option: b, confidence: 0.9 };
+    const fits = opts.filter((o) => !DECLINE_OPTION.test(o) && (yn ? !NEGATIVE.test(o) : NEGATIVE.test(o)));
+    if (fits.length === 1) return { option: fits[0], confidence: 0.85 };
+  }
+  const synonyms: Record<string, RegExp> = { male: /^(man|male)\b/i, man: /^(man|male)\b/i, female: /^(woman|female)\b/i, woman: /^(woman|female)\b/i };
+  if (synonyms[v]) {
+    const g = opts.find((o) => synonyms[v].test(o.trim()));
+    if (g) return { option: g, confidence: 0.9 };
+  }
+  if (/google|search engine/.test(v)) {
+    const pick = REFERRAL_FALLBACKS.map((re) => opts.find((o) => re.test(o))).find(Boolean);
+    if (pick) return { option: pick, confidence: 0.85 };
+  }
+  // The value appears as a whole word in exactly one option ("Asian" -> "Asian (Not Hispanic or Latino)").
+  if (v.length >= 3) {
+    const re = new RegExp(`(^|[^a-z0-9])${escapeRe(v)}($|[^a-z0-9])`);
+    const hits = opts.filter((o) => re.test(normalizeText(o)));
+    if (hits.length === 1) return { option: hits[0], confidence: 0.85 };
+  }
+  return null;
+}
+
 /** Pick the option meaning yes/no, or the given text, from a question's options (or answer free text). */
 function choose(options: string[] | undefined, value: boolean | string): string | null {
   if (typeof value === 'boolean') return options?.length ? pickBooleanOption(options, value) : value ? 'Yes' : 'No';
   if (!options?.length) return value;
-  return matchOption(options, value, 0.75)?.option ?? options.find((o) => normalizeText(o).includes(normalizeText(value))) ?? null;
+  return pickOption(options, value)?.option ?? matchOption(options, value, 0.75)?.option ?? options.find((o) => normalizeText(o).includes(normalizeText(value))) ?? null;
 }
 
 /**
@@ -333,11 +376,15 @@ export function screeningFromAnswer(question: string, answer: string): Partial<S
   const yn = /^yes\b/i.test(a) ? true : /^no\b/i.test(a) ? false : null;
   if (/hispanic|latin[oa]/.test(q)) return yn == null ? null : { eeo: 'answer', hispanicLatino: yn };
   if (/\bcitizen(ship)?\b/.test(q)) return yn == null ? null : { citizen: yn };
-  if (/sexual orientation/.test(q)) return { eeo: 'answer', sexualOrientation: a.slice(0, 80) };
-  if (/pronoun/.test(q)) return { eeo: 'answer', pronouns: a.slice(0, 40) };
-  if (/\bgender\b|\bsex\b/.test(q)) return { eeo: 'answer', gender: a.slice(0, 80) };
-  if (/\brace\b|racial|ethnic/.test(q)) return { eeo: 'answer', raceEthnicity: a.slice(0, 120) };
-  if (/veteran|armed forces|military/.test(q)) return { eeo: 'answer', veteranStatus: a.slice(0, 120) };
-  if (/disabilit/.test(q)) return { eeo: 'answer', disabilityStatus: a.slice(0, 120) };
+  // Store what the answer means, not this form's wording, so any wording on the next form matches.
+  const declined = DECLINE_OPTION.test(a);
+  const meaning = (v: string) => (declined ? 'Prefer not to say' : v.slice(0, 120));
+  const yesNo = () => (declined ? 'Prefer not to say' : NEGATIVE.test(a) ? 'No' : 'Yes');
+  if (/sexual orientation/.test(q)) return { eeo: 'answer', sexualOrientation: meaning(a).slice(0, 80) };
+  if (/pronoun/.test(q)) return { eeo: 'answer', pronouns: meaning(a).slice(0, 40) };
+  if (/\bgender\b|\bsex\b/.test(q)) return { eeo: 'answer', gender: meaning(a).slice(0, 80) };
+  if (/\brace\b|racial|ethnic/.test(q)) return { eeo: 'answer', raceEthnicity: meaning(a) };
+  if (/veteran|armed forces|military/.test(q)) return { eeo: 'answer', veteranStatus: yesNo() };
+  if (/disabilit/.test(q)) return { eeo: 'answer', disabilityStatus: yesNo() };
   return null;
 }

@@ -16,6 +16,8 @@ import {
   judgeEvidence,
   questionsPayload,
   runPass,
+  comboboxValue,
+  detectFields,
   selectAdapter,
   stillMissing,
   sleep,
@@ -188,11 +190,7 @@ function valueOf(f: PassResult['results'][number]['field']): string {
   if (f.group?.length) return f.group.filter((g) => g.checked).map((g) => (g.labels?.[0]?.textContent ?? g.value).trim()).join(', ');
   if (f.kind === 'checkbox') return el.checked ? 'Yes' : '';
   if (f.kind === 'select') return el.selectedOptions?.[0]?.value ? el.selectedOptions[0].textContent?.trim() ?? '' : '';
-  if (f.kind === 'combobox') {
-    // React-select style widgets show the chosen value next to the input.
-    const shown = el.closest('[class*="select" i], [class*="combobox" i]')?.querySelector('[class*="single-value" i], [class*="singleValue" i]')?.textContent?.trim();
-    return shown || el.value || '';
-  }
+  if (f.kind === 'combobox') return comboboxValue(el).trim();
   return (el.value ?? '').trim();
 }
 
@@ -200,6 +198,18 @@ function valueOf(f: PassResult['results'][number]['field']): string {
  * Some required questions are left. Park the application, highlight them, and wait for the person to answer
  * in the form. Their answers are saved (reused on later forms), then the run continues and submits itself.
  */
+/** What the person entered for the questions ApplyFlux asked them, read fresh from the page. */
+function learnedAnswers(engine: EngineContext, asked: PassResult['results'][number]['field'][]) {
+  const form = engine.adapter.findForm(document);
+  const fresh = form ? detectFields(document, { root: form, groupSelectors: engine.adapter.groupSelectors, buttonChoiceSelector: engine.adapter.buttonChoiceSelector }) : [];
+  return asked
+    .map((f) => {
+      const now = fresh.find((x) => x.key === f.key) ?? fresh.find((x) => x.label === f.label) ?? f;
+      return { question: f.label.replace(/\s*\*\s*$/, '').trim(), answer: valueOf(now) };
+    })
+    .filter((a) => a.question && a.answer && a.answer.length <= 5000 && !/^(select|choose)/i.test(a.answer));
+}
+
 /** Seconds of no typing/clicking before ApplyFlux continues, so it never submits mid-answer. */
 const IDLE_MS = 4000;
 
@@ -237,8 +247,26 @@ async function waitForPersonAnswers(ctx: RunContext, engine: EngineContext, pass
     showGuide('Your answer needed', `Answer the ${fields.length} highlighted question${fields.length === 1 ? '' : 's'}. When you stop typing, ApplyFlux saves your answers for next time and submits by itself.`);
     mark(fields, scroll);
   };
+  // If the person submits it themselves, still learn their answers and track the submission.
+  let submittedByPerson = false;
+  const onPersonSubmit = (e: Event) => {
+    if (submittedByPerson) return;
+    if (e.type === 'click') {
+      const btn = engine.adapter.submitButton(document);
+      if (!btn || !(e.target instanceof Node) || !btn.contains(e.target) || stillMissing(document, engine.adapter, asked).length) return;
+    }
+    submittedByPerson = true;
+    const answers = learnedAnswers(engine, asked);
+    if (answers.length) send({ type: 'af:report', applicationId: ctx.applicationId, report: { type: 'answers_provided', data: { answers, resume: false } } }).catch(() => {});
+    send({ type: 'af:report', applicationId: ctx.applicationId, report: { type: 'submit_attempted', data: { pageUrl: location.href } } }).catch(() => {});
+    send({ type: 'af:phase', applicationId: ctx.applicationId, phase: 'submitting' }).catch(() => {});
+  };
+  document.addEventListener('submit', onPersonSubmit, { capture: true });
+  document.addEventListener('click', onPersonSubmit, { capture: true });
   const cleanup = () => {
     events.forEach((e) => document.removeEventListener(e, touch, { capture: true }));
+    document.removeEventListener('submit', onPersonSubmit, { capture: true });
+    document.removeEventListener('click', onPersonSubmit, { capture: true });
     unmark();
   };
 
@@ -247,6 +275,14 @@ async function waitForPersonAnswers(ctx: RunContext, engine: EngineContext, pass
     for (;;) {
       await sleep(1000);
       checkControl();
+      if (submittedByPerson) {
+        // The page usually navigates (and the outcome is checked there); if it submits in place, check it here.
+        await sleep(2500);
+        cleanup();
+        hideGuide();
+        await collectAndReport(ctx, engine.adapter.id);
+        return null;
+      }
       // Watch only: nothing is typed, focused or scrolled while the person answers.
       const left = stillMissing(document, engine.adapter, missing);
       if (left.length) {
@@ -264,13 +300,7 @@ async function waitForPersonAnswers(ctx: RunContext, engine: EngineContext, pass
         continue;
       }
       // Remember what the person gave for the questions we could not answer.
-      const answers = asked
-        .map((f) => {
-          const fresh = now.results.find((r) => r.field.key === f.key || r.field.label === f.label)?.field ?? f;
-          return { question: f.label.replace(/\s*\*\s*$/, '').trim(), answer: valueOf(fresh) };
-        })
-        .filter((a) => a.question && a.answer && a.answer.length <= 5000 && !/^(select|choose)/i.test(a.answer));
-      await report(ctx, { type: 'answers_provided', data: { answers, resume: true } });
+      await report(ctx, { type: 'answers_provided', data: { answers: learnedAnswers(engine, asked), resume: true } });
       await phase(ctx, 'filling').catch(() => {});
       hideGuide();
       cleanup();

@@ -103,9 +103,27 @@ function questionFields() {
 <label class="opt"><input type="checkbox" id="consent" name="consent" required> I consent to ${COMPANY} processing my data for recruitment purposes. *</label>`;
 }
 
-function personFields() {
+/** A searchable dropdown built like react-select (as on Greenhouse job boards): opens on mousedown, shows the choice in its own element. */
+function reactSelect(id: string, label: string, options: string[]) {
+  return `<label for="${id}">${label} *</label><div class="rs" data-options='${JSON.stringify(options).replace(/'/g, '&#39;')}' style="position:relative">
+<div class="select__control" style="border:1px solid #cfd4e2;border-radius:10px;padding:8px 12px;background:#fff;cursor:pointer"><div class="select__value-container"><span class="select__placeholder muted">Select...</span>
+<div class="select__input-container"><input id="${id}" role="combobox" aria-autocomplete="list" aria-required="true" autocomplete="off" style="border:0;outline:0;width:100%"></div></div></div>
+<div class="select__menu" hidden style="position:absolute;z-index:5;left:0;right:0;background:#fff;border:1px solid #cfd4e2;border-radius:10px"></div></div>`;
+}
+const REACT_SELECT_SCRIPT = `<script>document.querySelectorAll('.rs').forEach(function(rs){var opts=JSON.parse(rs.dataset.options),input=rs.querySelector('input'),menu=rs.querySelector('.select__menu'),vc=rs.querySelector('.select__value-container');
+function render(f){menu.innerHTML='';var shown=opts.filter(function(o){return o.toLowerCase().indexOf(f.toLowerCase())>=0;});if(!shown.length){menu.innerHTML='<div class="select__menu-notice--no-options" style="padding:8px">No options</div>';}
+shown.forEach(function(o,i){var d=document.createElement('div');d.className='select__option';d.id='react-select-'+input.id+'-option-'+i;d.textContent=o;d.style.padding='8px 12px';d.onclick=function(){var old=vc.querySelector('.select__placeholder,.select__single-value');if(old)old.remove();var sv=document.createElement('div');sv.className='select__single-value';sv.textContent=o;vc.insertBefore(sv,vc.firstChild);input.value='';menu.hidden=true;};menu.appendChild(d);});menu.hidden=false;}
+rs.querySelector('.select__control').addEventListener('mousedown',function(){render('');});input.addEventListener('input',function(){render(input.value);});});
+document.getElementById('application-form').addEventListener('submit',function(e){var bad=[].filter.call(document.querySelectorAll('.rs'),function(rs){return !rs.querySelector('.select__single-value');});if(bad.length){e.preventDefault();e.stopImmediatePropagation();document.getElementById('form-error').textContent='Please answer every required question.';}},true);</script>`;
+
+function personFields(scenario: string) {
+  // The second form words the veteran options differently, as different employers do.
+  const veteran = scenario === 'ask-person-again'
+    ? ['Yes, I am a protected veteran', 'No, I am not a protected veteran', 'I prefer not to answer']
+    : ['I identify as one or more of the classifications of protected veteran', 'I am not a protected veteran', "I don't wish to answer"];
   return `<label for="tools">Which ticketing tools have you used day to day, and for how long? *</label><textarea id="tools" name="tools" required></textarea>
-<label for="shift">Which support shift would you prefer? *</label><select id="shift" name="shift" required><option value="">Select…</option><option>Early (6am–2pm)</option><option>Late (2pm–10pm)</option><option>Weekend</option></select>`;
+<label for="shift">Which support shift would you prefer? *</label><select id="shift" name="shift" required><option value="">Select…</option><option>Early (6am–2pm)</option><option>Late (2pm–10pm)</option><option>Weekend</option></select>
+${reactSelect('veteran_status', 'Protected Veteran Status', veteran)}${REACT_SELECT_SCRIPT}`;
 }
 
 function experienceFields() {
@@ -135,7 +153,7 @@ export function applyPage(scenario: Scenario, ref: string) {
   const step = (n: number, content: string) => `<section data-step="${n}" ${n > 1 ? 'hidden' : ''}>${content}</section>`;
   const body = multi
     ? step(1, `<h2>Your details</h2>${contactFields()}`) + step(2, `<h2>Experience</h2>${experienceFields()}`) + step(3, `<h2>A few questions</h2>${questionFields()}`)
-    : step(1, `${contactFields()}<h2>Questions</h2>${questionFields()}${scenario.startsWith('ask-person') ? personFields() : ''}`);
+    : step(1, `${contactFields()}<h2>Questions</h2>${questionFields()}${scenario.startsWith('ask-person') ? personFields(scenario) : ''}`);
   const captchaBefore = s.captcha === 'before' || s.captcha === 'repeat';
   return shell(
     `Apply: ${s.title} — ${COMPANY}`,

@@ -20,6 +20,8 @@ import {
   genericAdapter,
   linkedinAdapter,
   toReported,
+  fillField,
+  stillMissing,
 } from '../src';
 
 function load(name: string, url = 'https://example.com/apply') {
@@ -328,3 +330,78 @@ describe('Ashby (div-based form with Yes/No buttons)', () => {
   });
 });
 
+
+describe('searchable dropdowns (react-select, as on Greenhouse job boards)', () => {
+  /** A react-select look-alike: the menu opens on mousedown on the control; the choice shows in a single-value div. */
+  function reactSelect(id: string, label: string, options: string[]) {
+    return `<div class="field"><label for="${id}">${label} *</label><div class="select__container"><div class="select__control">
+      <div class="select__value-container"><div class="select__placeholder">Select...</div><div class="select__input-container">
+      <input id="${id}" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-required="true" required class="select__input" value=""></div></div></div>
+      <div class="select__menu-host" data-options='${JSON.stringify(options).replace(/'/g, '&#39;')}'></div></div></div>`;
+  }
+  function wire(doc: Document) {
+    for (const host of Array.from(doc.querySelectorAll<HTMLElement>('.select__menu-host'))) {
+      const options: string[] = JSON.parse(host.dataset.options!);
+      const container = host.parentElement!;
+      const input = container.querySelector('input')!;
+      const render = (filter: string) => {
+        host.innerHTML = '';
+        const menu = doc.createElement('div');
+        menu.className = 'select__menu';
+        const shown = options.filter((o) => o.toLowerCase().includes(filter.toLowerCase()));
+        if (!shown.length) menu.innerHTML = '<div class="select__menu-notice--no-options">No options</div>';
+        for (const o of shown) {
+          const el = doc.createElement('div');
+          el.className = 'select__option';
+          el.id = `react-select-${input.id}-option-${options.indexOf(o)}`;
+          el.textContent = o;
+          el.addEventListener('click', () => {
+            const vc = container.querySelector('.select__value-container')!;
+            vc.querySelector('.select__placeholder, .select__single-value')?.remove();
+            const sv = doc.createElement('div');
+            sv.className = 'select__single-value';
+            sv.textContent = o;
+            vc.prepend(sv);
+            input.value = '';
+            host.innerHTML = '';
+          });
+          menu.appendChild(el);
+        }
+        host.appendChild(menu);
+      };
+      container.querySelector('.select__control')!.addEventListener('mousedown', () => render(''));
+      input.addEventListener('input', () => render(input.value));
+    }
+  }
+  const page = () => {
+    const doc = new JSDOM(`<!doctype html><form>${reactSelect('vet', 'Protected Veteran Status', ['I identify as one or more of the classifications of protected veteran', 'I am not a protected veteran', "I don't wish to answer"])}
+      ${reactSelect('gender', 'Gender', ['Male', 'Female', 'Decline To Self Identify'])}<button type="submit">Submit</button></form>`, { url: 'https://job-boards.greenhouse.io/x/jobs/1', pretendToBeVisual: true }).window.document;
+    wire(doc);
+    return doc;
+  };
+
+  it('opens the menu, picks the option that means the answer (without filtering it away), and reads the choice back', async () => {
+    const doc = page();
+    const fields = detectFields(doc);
+    const vet = fields.find((f) => f.element.id === 'vet')!;
+    const gender = fields.find((f) => f.element.id === 'gender')!;
+    expect(vet.kind).toBe('combobox');
+    expect(vet.currentValue).toBe('');
+    expect(await fillField(vet, 'No')).toMatchObject({ ok: true, value: 'I am not a protected veteran' });
+    expect(await fillField(gender, 'Prefer not to say')).toMatchObject({ ok: true, value: 'Decline To Self Identify' });
+    const again = detectFields(doc);
+    expect(again.find((f) => f.element.id === 'vet')!.currentValue).toBe('I am not a protected veteran');
+  });
+
+  it('treats a dropdown the person chose themselves as answered (typed search text alone is not an answer)', () => {
+    const doc = page();
+    const missing = detectFields(doc).filter((f) => f.required);
+    const adapter = { ...genericAdapter, findForm: (d: Document) => d.querySelector('form') };
+    const gender = doc.getElementById('gender') as HTMLInputElement;
+    gender.value = 'Fem';
+    expect(stillMissing(doc, adapter, missing).map((f) => f.element.id)).toEqual(['vet', 'gender']);
+    (doc.querySelector('.select__control') as HTMLElement).dispatchEvent(new doc.defaultView!.MouseEvent('mousedown', { bubbles: true }));
+    (doc.querySelector('.select__option:nth-child(2)') as HTMLElement).click();
+    expect(stillMissing(doc, adapter, missing).map((f) => f.element.id)).toEqual(['gender']);
+  });
+});

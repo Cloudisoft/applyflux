@@ -10,6 +10,8 @@ import {
   answerFromProfile,
   questionKey,
   matchOption,
+  pickOption,
+  screeningFromAnswer,
   pickBooleanOption,
   assessProfile,
   buildAutofillProfile,
@@ -342,3 +344,37 @@ describe('common screening questions', () => {
   });
 });
 
+
+describe('pickOption: the option that means the answer, however the form words it', () => {
+  const pick = (opts: string[], v: string) => pickOption(opts, v)?.option ?? null;
+  it('maps yes/no to worded options', () => {
+    const vet = ['I identify as one or more of the classifications of protected veteran', 'I am not a protected veteran', "I don't wish to answer"];
+    expect(pick(vet, 'No')).toBe('I am not a protected veteran');
+    expect(pick(vet, 'Yes')).toBe('I identify as one or more of the classifications of protected veteran');
+    expect(pick(['Yes, I have a disability', 'No, I do not have a disability and have not had one in the past', 'I do not want to answer'], 'No')).toBe('No, I do not have a disability and have not had one in the past');
+    expect(pick(['Yes', 'No'], 'No.')).toBe('No');
+  });
+  it('maps any "prefer not to say" wording to the form\'s decline option', () => {
+    expect(pick(['Male', 'Female', 'I don\'t wish to answer'], 'Prefer not to say')).toBe("I don't wish to answer");
+    expect(pick(['Man', 'Woman', 'Decline To Self Identify'], 'I prefer not to answer')).toBe('Decline To Self Identify');
+  });
+  it('maps Google to the closest referral source', () => {
+    expect(pick(['LinkedIn', 'Search Engine (Google, Bing)', 'Referral', 'Other'], 'Google')).toBe('Search Engine (Google, Bing)');
+    expect(pick(['Job board', 'Social media', 'Employee referral', 'Other'], 'Google')).toBe('Social media');
+    expect(pick(['Indeed', 'Glassdoor', 'Other'], 'Google')).toBe('Other');
+  });
+  it('finds a short answer inside a longer option, and refuses to guess otherwise', () => {
+    expect(pick(['White (Not Hispanic or Latino)', 'Asian (Not Hispanic or Latino)', 'Two or More Races'], 'Asian')).toBe('Asian (Not Hispanic or Latino)');
+    expect(pick(['Red', 'Blue'], 'Green')).toBeNull();
+  });
+});
+
+describe('answers learned from a form are stored by meaning', () => {
+  it('turns form wording into yes / no / prefer not to say', () => {
+    expect(screeningFromAnswer('Protected Veteran Status', 'I am not a protected veteran')).toEqual({ eeo: 'answer', veteranStatus: 'No' });
+    expect(screeningFromAnswer('Disability Status', 'Yes, I have a disability (or previously had a disability)')).toEqual({ eeo: 'answer', disabilityStatus: 'Yes' });
+    expect(screeningFromAnswer('Gender', "I don't wish to answer")).toEqual({ eeo: 'answer', gender: 'Prefer not to say' });
+    expect(screeningFromAnswer('Gender', 'Male')).toEqual({ eeo: 'answer', gender: 'Male' });
+    expect(pickOption(['Man', 'Woman', 'Non-binary', 'Decline to self-identify'], 'Male')?.option).toBe('Man');
+  });
+});
