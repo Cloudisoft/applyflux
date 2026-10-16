@@ -17,6 +17,7 @@ import {
   questionsPayload,
   runPass,
   selectAdapter,
+  stillMissing,
   sleep,
   toReported,
   waitFor,
@@ -199,34 +200,71 @@ function valueOf(f: PassResult['results'][number]['field']): string {
  * Some required questions are left. Park the application, highlight them, and wait for the person to answer
  * in the form. Their answers are saved (reused on later forms), then the run continues and submits itself.
  */
+/** Seconds of no typing/clicking before ApplyFlux continues, so it never submits mid-answer. */
+const IDLE_MS = 4000;
+
 async function waitForPersonAnswers(ctx: RunContext, engine: EngineContext, pass: PassResult, step: number): Promise<PassResult | null> {
-  const missing = pass.missingRequired.map((r) => r.field);
-  const labels = missing.map((f) => f.label).slice(0, 5).join('; ');
-  await report(ctx, {
-    type: 'intervention',
-    data: { intervention: 'review_before_submit', message: `${missing.length} question(s) need your answer: ${labels}. Answer them in the tab; ApplyFlux remembers your answers and continues by itself.`, fields: toReported(pass.results), stepState: { step, url: location.href }, pageUrl: location.href },
-  });
-  await phase(ctx, 'awaiting_review').catch(() => {});
-  showGuide('Your answer needed', `Answer the ${missing.length} highlighted question${missing.length === 1 ? '' : 's'}. ApplyFlux saves your answers for next time and finishes this application by itself.`);
-  const marked = missing.map((f) => f.element.closest<HTMLElement>('.field, .ashby-application-form-field-entry, fieldset, [class*="question" i], [class*="field" i]') ?? f.element);
-  marked.forEach((el) => {
-    el.dataset.afOutline = el.style.outline;
-    el.style.outline = '3px solid #f43f5e';
-    el.style.outlineOffset = '4px';
-  });
-  marked[0]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  let missing = pass.missingRequired.map((r) => r.field);
+  const asked = [...missing];
+  let lastTouch = Date.now();
+  const touch = () => (lastTouch = Date.now());
+  const events = ['keydown', 'input', 'change', 'mousedown', 'pointerdown', 'wheel', 'touchstart'] as const;
+  events.forEach((e) => document.addEventListener(e, touch, { capture: true, passive: true }));
+
+  let marked: HTMLElement[] = [];
   const unmark = () => marked.forEach((el) => {
     el.style.outline = el.dataset.afOutline ?? '';
     el.style.outlineOffset = '';
   });
+  const mark = (fields: typeof missing, scroll: boolean) => {
+    unmark();
+    marked = fields.map((f) => f.element.closest<HTMLElement>('.field, .ashby-application-form-field-entry, fieldset, [class*="question" i], [class*="field" i]') ?? f.element);
+    marked.forEach((el) => {
+      el.dataset.afOutline ??= el.style.outline;
+      el.style.outline = '3px solid #f43f5e';
+      el.style.outlineOffset = '4px';
+    });
+    // Scroll once, when asking; never while the person is working on the page.
+    if (scroll) marked[0]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  };
+  const ask = async (fields: typeof missing, scroll: boolean) => {
+    const labels = fields.map((f) => f.label).slice(0, 5).join('; ');
+    await report(ctx, {
+      type: 'intervention',
+      data: { intervention: 'review_before_submit', message: `${fields.length} question(s) need your answer: ${labels}. Answer them in the tab; ApplyFlux remembers your answers and continues by itself.`, fields: toReported(pass.results), stepState: { step, url: location.href }, pageUrl: location.href },
+    });
+    await phase(ctx, 'awaiting_review').catch(() => {});
+    showGuide('Your answer needed', `Answer the ${fields.length} highlighted question${fields.length === 1 ? '' : 's'}. When you stop typing, ApplyFlux saves your answers for next time and submits by itself.`);
+    mark(fields, scroll);
+  };
+  const cleanup = () => {
+    events.forEach((e) => document.removeEventListener(e, touch, { capture: true }));
+    unmark();
+  };
+
   try {
+    await ask(missing, true);
     for (;;) {
-      await sleep(1500);
+      await sleep(1000);
       checkControl();
+      // Watch only: nothing is typed, focused or scrolled while the person answers.
+      const left = stillMissing(document, engine.adapter, missing);
+      if (left.length) {
+        if (left.length !== marked.length) mark(left, false);
+        continue;
+      }
+      if (Date.now() - lastTouch < IDLE_MS) continue;
+      // All answered and the person paused: fill anything else once, then carry on.
       const now = await runPass(document, engine);
-      if (now.missingRequired.length) continue;
-      // Everything required is answered: remember what the person gave for the questions we could not answer.
-      const answers = missing
+      if (now.missingRequired.length) {
+        // A follow-up question appeared (e.g. "If yes, explain").
+        missing = now.missingRequired.map((r) => r.field);
+        asked.push(...missing.filter((m) => !asked.some((a) => a.key === m.key)));
+        await ask(missing, false);
+        continue;
+      }
+      // Remember what the person gave for the questions we could not answer.
+      const answers = asked
         .map((f) => {
           const fresh = now.results.find((r) => r.field.key === f.key || r.field.label === f.label)?.field ?? f;
           return { question: f.label.replace(/\s*\*\s*$/, '').trim(), answer: valueOf(fresh) };
@@ -235,11 +273,11 @@ async function waitForPersonAnswers(ctx: RunContext, engine: EngineContext, pass
       await report(ctx, { type: 'answers_provided', data: { answers, resume: true } });
       await phase(ctx, 'filling').catch(() => {});
       hideGuide();
-      unmark();
+      cleanup();
       return now;
     }
   } catch (e) {
-    unmark();
+    cleanup();
     if (e instanceof Stop) return null;
     throw e;
   }

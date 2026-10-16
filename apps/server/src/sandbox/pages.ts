@@ -14,6 +14,8 @@ export const SCENARIOS = {
   'captcha-repeat': { title: 'Platform Engineer', steps: 3, captcha: 'repeat', note: 'Verification appears on every step' },
   'validation-error': { title: 'Customer Success Manager', steps: 1, captcha: 'none', note: 'The first submission is rejected with a field error' },
   'no-confirmation': { title: 'Marketing Manager', steps: 1, captcha: 'none', note: 'Submits without a clear confirmation page' },
+  'ask-person': { title: 'Support Engineer', steps: 1, captcha: 'none', note: 'Includes questions only you can answer' },
+  'ask-person-again': { title: 'Support Specialist', steps: 1, captcha: 'none', note: 'Asks the same questions again, to check your answers are reused' },
   login: { title: 'Solutions Engineer', steps: 1, captcha: 'none', note: 'Requires signing in to an account first' },
 } as const;
 export type Scenario = keyof typeof SCENARIOS;
@@ -101,6 +103,11 @@ function questionFields() {
 <label class="opt"><input type="checkbox" id="consent" name="consent" required> I consent to ${COMPANY} processing my data for recruitment purposes. *</label>`;
 }
 
+function personFields() {
+  return `<label for="tools">Which ticketing tools have you used day to day, and for how long? *</label><textarea id="tools" name="tools" required></textarea>
+<label for="shift">Which support shift would you prefer? *</label><select id="shift" name="shift" required><option value="">Select…</option><option>Early (6am–2pm)</option><option>Late (2pm–10pm)</option><option>Weekend</option></select>`;
+}
+
 function experienceFields() {
   const group = (n: number) => `<div class="repeat" data-repeat-group="experience"><strong>Work experience ${n}</strong>
 <div class="row"><div><label for="exp${n}_title">Job title${n === 1 ? ' *' : ''}</label><input type="text" id="exp${n}_title" name="exp${n}_title" ${n === 1 ? 'required' : ''}></div>
@@ -128,7 +135,7 @@ export function applyPage(scenario: Scenario, ref: string) {
   const step = (n: number, content: string) => `<section data-step="${n}" ${n > 1 ? 'hidden' : ''}>${content}</section>`;
   const body = multi
     ? step(1, `<h2>Your details</h2>${contactFields()}`) + step(2, `<h2>Experience</h2>${experienceFields()}`) + step(3, `<h2>A few questions</h2>${questionFields()}`)
-    : step(1, `${contactFields()}<h2>Questions</h2>${questionFields()}`);
+    : step(1, `${contactFields()}<h2>Questions</h2>${questionFields()}${scenario.startsWith('ask-person') ? personFields() : ''}`);
   const captchaBefore = s.captcha === 'before' || s.captcha === 'repeat';
   return shell(
     `Apply: ${s.title} — ${COMPANY}`,

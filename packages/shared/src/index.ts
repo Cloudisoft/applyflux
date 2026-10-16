@@ -12,4 +12,4 @@ export type { LivenessInput, LivenessResult } from './vendor/liveness-core';
 export * from './discovery';
 
 /** Version of the ApplyFlux Agent extension this server ships (kept equal to apps/extension/package.json by a test). */
-export const EXTENSION_VERSION = '0.3.0';
+export const EXTENSION_VERSION = '0.3.1';

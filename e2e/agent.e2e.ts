@@ -276,6 +276,53 @@ test('A CAPTCHA parks only its own application: the next one is filled and submi
   await api.post('/automation/stop');
 });
 
+test('Questions only the person can answer: the page stays theirs while they type, then it submits and remembers', async () => {
+  const api = await newUser('askperson@example.com');
+  await pairViaPopup(api);
+  await api.put('/automation/preferences', { mode: 'auto', dailyLimit: 10, maxConcurrency: 1, minMatchScore: 0, excludedCompanies: [], excludedKeywords: [] });
+  await api.post('/automation/consent', { version: AUTO_SUBMIT_CONSENT_VERSION, accepted: true });
+  const job = await queue(api, 'ask-person');
+  await api.post('/automation/start');
+
+  const waiting = await waitForState(api, job.applicationId, ['AWAITING_REVIEW', 'NEEDS_ATTENTION', 'FAILED', 'SUBMITTED']);
+  expect(waiting.state, JSON.stringify(waiting.intervention)).toBe('AWAITING_REVIEW');
+  expect(waiting.intervention.message).toMatch(/need your answer/);
+  const page = await sandboxPage(job.ref);
+  await page.bringToFront();
+  // Everything ApplyFlux knows is already filled.
+  expect(await page.inputValue('#first_name')).toBe('Ada');
+
+  // The person answers slowly. Focus, text and scroll position stay theirs the whole time.
+  await page.click('#tools');
+  const scrollY = await page.evaluate(() => window.scrollY);
+  const answer = 'Zendesk for four years and Jira Service Management for two.';
+  for (const ch of answer) {
+    await page.keyboard.type(ch);
+    await new Promise((r) => setTimeout(r, 40));
+  }
+  for (let i = 0; i < 6; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await page.evaluate(() => document.activeElement?.id)).toBe('tools');
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrollY);
+    // Pausing mid-answer for a few seconds is fine: nothing is submitted until every required answer is in.
+    expect(await submissions('ask-person', job.ref)).toBe(0);
+  }
+  expect(await page.inputValue('#tools')).toBe(answer);
+  await page.selectOption('#shift', { label: 'Late (2pm–10pm)' });
+
+  const done = await waitForState(api, job.applicationId, ['SUBMITTED', 'SUBMISSION_UNVERIFIED', 'NEEDS_ATTENTION', 'FAILED']);
+  expect(done.state, JSON.stringify(done.intervention ?? done.lastError)).toBe('SUBMITTED');
+  expect(await submissions('ask-person', job.ref)).toBe(1);
+
+  // The next form with the same questions is answered and submitted without stopping.
+  const next = await queue(api, 'ask-person-again');
+  const second = await waitForState(api, next.applicationId, ['SUBMITTED', 'SUBMISSION_UNVERIFIED', 'NEEDS_ATTENTION', 'AWAITING_REVIEW', 'FAILED'], 90_000);
+  expect(second.state, JSON.stringify(second.intervention ?? second.lastError)).toBe('SUBMITTED');
+  expect(second.events.map((e: { type: string }) => e.type)).not.toContain('intervention');
+  expect(await submissions('ask-person-again', next.ref)).toBe(1);
+  await api.post('/automation/stop');
+});
+
 test('Extension popup buttons: start, pause, stop and disconnect all work', async () => {
   const api = await newUser('popup@example.com');
   await pairViaPopup(api);

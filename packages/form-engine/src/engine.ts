@@ -51,6 +51,23 @@ function isEmpty(f: DetectedField): boolean {
   return !f.currentValue || /^(select|choose|please select|--)/i.test(f.currentValue);
 }
 
+/**
+ * Read-only: the required fields from `wanted` that are still empty on the page. Never types, focuses,
+ * clicks or scrolls, so it is safe to call repeatedly while the person is answering.
+ */
+export function stillMissing(doc: Document, adapter: EngineContext['adapter'], wanted: DetectedField[]): DetectedField[] {
+  const form = adapter.findForm(doc);
+  if (!form) return [];
+  const fresh = detectFields(doc, { root: form, groupSelectors: adapter.groupSelectors, buttonChoiceSelector: adapter.buttonChoiceSelector });
+  const out: DetectedField[] = [];
+  for (const w of wanted) {
+    const f = fresh.find((x) => x.key === w.key) ?? fresh.find((x) => x.label === w.label);
+    // A question that disappeared (conditional) no longer needs an answer.
+    if (f && f.required && isEmpty(f)) out.push(f);
+  }
+  return out;
+}
+
 /** Inspect the current page and fill everything that can be filled safely. Idempotent: run it again after answers arrive. */
 export async function runPass(doc: Document, ctx: EngineContext): Promise<PassResult> {
   const { adapter } = ctx;
