@@ -254,8 +254,8 @@ export async function claimNext(db: Db, config: Config, userId: string, connecti
       [userId],
     );
     if (!next) {
-      await c.query(`update automation_runs set status='completed', ended_at=now() where id=$1 and not exists (select 1 from applications where user_id=$2 and state in ('IN_PROGRESS','AWAITING_HUMAN_VERIFICATION','AWAITING_REVIEW'))`, [run.id, userId]);
-      return { idle: true as const, reason: 'Queue is empty' };
+      // The run stays on: jobs queued later (by the person or by discovery) start without pressing Start again.
+      return { idle: true as const, reason: 'Waiting for new jobs' };
     }
     // Re-check exclusions at execution time (preferences may have changed since queueing).
     const excl = exclusionReason(next, { excludedCompanies: prefs.excluded_companies, excludedKeywords: prefs.excluded_keywords, requireSponsorshipFriendly: prefs.require_sponsorship_friendly });

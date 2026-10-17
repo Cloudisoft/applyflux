@@ -129,3 +129,53 @@ export function similarity(a: string, b: string): number {
   for (const [g, n] of gx) overlap += Math.min(n, gy.get(g) ?? 0);
   return (2 * overlap) / (x.length - 1 + (y.length - 1));
 }
+
+/* ------------------------------------------------------------------ */
+/* The same question in different words                                */
+/* ------------------------------------------------------------------ */
+
+const QUESTION_STOPWORDS = new Set(
+  'a an the of to in on at for with by from about as and or if is are was were be been being do does did have has had you your yours we our us this that these those it its any some what which who whom how when where why will would can could should may might must please currently first ever there their them they i me my am applying apply role position job company'.split(' '),
+);
+/** Words employers use interchangeably in the same question. */
+const QUESTION_SYNONYMS: string[][] = [
+  ['size', 'big', 'large', 'many', 'number', 'count'],
+  ['hear', 'find', 'learn', 'discover', 'see', 'come'],
+  ['led', 'lead', 'leading', 'manage', 'managed', 'managing', 'supervise', 'supervised'],
+  ['years', 'year', 'yrs'],
+  ['experience', 'experienced'],
+  ['salary', 'compensation', 'pay'],
+  ['expected', 'expectation', 'expectations', 'desired'],
+  ['start', 'join', 'begin'],
+  ['relocate', 'relocation', 'move'],
+  ['require', 'need', 'needs', 'required'],
+  ['sponsorship', 'sponsor', 'visa'],
+  ['authorized', 'authorised', 'eligible', 'permitted', 'legally'],
+];
+const SYNONYM_OF = new Map<string, string>(QUESTION_SYNONYMS.flatMap((g) => g.map((w) => [w, g[0]] as [string, string])));
+
+function questionWords(q: string): Set<string> {
+  return new Set(
+    normalizeText(q)
+      .replace(/[^a-z0-9 ]+/g, ' ')
+      .split(' ')
+      .filter((w) => w.length > 1 && !QUESTION_STOPWORDS.has(w))
+      .map((w) => SYNONYM_OF.get(w) ?? w.replace(/(ing|ed|es|s)$/, '')),
+  );
+}
+
+/**
+ * How alike two questions are (0-1), by their meaningful words with synonyms folded together
+ * ("How big a team have you led?" ~ "What size of team have you managed?"). Character similarity is only used
+ * for very short questions: by characters "years with React" and "years with Python" look nearly the same.
+ */
+export function questionSimilarity(a: string, b: string): number {
+  const wa = questionWords(a);
+  const wb = questionWords(b);
+  if (wa.size < 2 || wb.size < 2) return similarity(a, b);
+  let both = 0;
+  wa.forEach((w) => {
+    if (wb.has(w)) both++;
+  });
+  return both / (wa.size + wb.size - both);
+}

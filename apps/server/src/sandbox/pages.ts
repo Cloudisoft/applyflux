@@ -16,6 +16,8 @@ export const SCENARIOS = {
   'no-confirmation': { title: 'Marketing Manager', steps: 1, captcha: 'none', note: 'Submits without a clear confirmation page' },
   'ask-person': { title: 'Support Engineer', steps: 1, captcha: 'none', note: 'Includes questions only you can answer' },
   'ask-person-again': { title: 'Support Specialist', steps: 1, captcha: 'none', note: 'Asks the same questions again, to check your answers are reused' },
+  'ask-person-dropdowns': { title: 'Support Lead', steps: 1, captcha: 'none', note: 'Questions only you can answer, in real react-select dropdowns on a long page' },
+  'ask-person-dropdowns-again': { title: 'Support Team Lead', steps: 1, captcha: 'none', note: 'The same dropdown questions, worded differently' },
   login: { title: 'Solutions Engineer', steps: 1, captcha: 'none', note: 'Requires signing in to an account first' },
 } as const;
 export type Scenario = keyof typeof SCENARIOS;
@@ -116,7 +118,29 @@ shown.forEach(function(o,i){var d=document.createElement('div');d.className='sel
 rs.querySelector('.select__control').addEventListener('mousedown',function(){render('');});input.addEventListener('input',function(){render(input.value);});});
 document.getElementById('application-form').addEventListener('submit',function(e){var bad=[].filter.call(document.querySelectorAll('.rs'),function(rs){return !rs.querySelector('.select__single-value');});if(bad.length){e.preventDefault();e.stopImmediatePropagation();document.getElementById('form-error').textContent='Please answer every required question.';}},true);</script>`;
 
+/** The real react-select library (as on Greenhouse job boards), mounted by /sandbox/assets/react-select.js. */
+function realSelect(id: string, label: string, options: string[]) {
+  return `<label for="${id}">${label} *</label><div class="rs-real" data-id="${id}" data-name="${id}" data-options='${JSON.stringify(options).replace(/'/g, '&#39;')}'></div>`;
+}
+
+function dropdownFields(scenario: string) {
+  const again = scenario === 'ask-person-dropdowns-again';
+  const source = again
+    ? ['A job board', 'The company careers site', 'Someone referred me', 'Something else']
+    : ['Job board', 'Company website', 'Referral', 'Other'];
+  const veteran = again
+    ? ['Yes, I am a protected veteran', 'No, I am not a protected veteran', 'I prefer not to answer']
+    : ['I identify as one or more of the classifications of protected veteran', 'I am not a protected veteran', "I don't wish to answer"];
+  return `${realSelect('team_size', again ? 'How big a support team have you led?' : 'What size of support team have you led?', ['1-3 people', '4-10 people', '11-25 people', 'More than 25 people'])}
+${realSelect('source', again ? 'How did you first hear about this role?' : 'How did you hear about this role?', source)}
+${realSelect('veteran_status', 'Protected Veteran Status', veteran)}
+<div style="height:1400px" aria-hidden="true"></div>
+<script src="/sandbox/assets/react-select.js"></script>
+<script>document.getElementById('application-form').addEventListener('submit',function(e){var bad=[].filter.call(document.querySelectorAll('.rs-real'),function(rs){var h=rs.querySelector('input[type=hidden]');return !h||!h.value;});if(bad.length){e.preventDefault();e.stopImmediatePropagation();document.getElementById('form-error').textContent='Please answer every required question.';}},true);</script>`;
+}
+
 function personFields(scenario: string) {
+  if (scenario.startsWith('ask-person-dropdowns')) return dropdownFields(scenario);
   // The second form words the veteran options differently, as different employers do.
   const veteran = scenario === 'ask-person-again'
     ? ['Yes, I am a protected veteran', 'No, I am not a protected veteran', 'I prefer not to answer']

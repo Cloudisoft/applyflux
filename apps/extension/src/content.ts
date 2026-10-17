@@ -213,13 +213,65 @@ function learnedAnswers(engine: EngineContext, asked: PassResult['results'][numb
 /** Seconds of no typing/clicking before ApplyFlux continues, so it never submits mid-answer. */
 const IDLE_MS = 4000;
 
+/**
+ * What the person is doing on the page, from real (trusted) input only: ApplyFlux's own typing and clicks are
+ * synthetic and never count. While they are active nothing is written, and a field they have worked on is
+ * never written over (see EngineContext.personBusy / touchedByPerson).
+ */
+const person = { lastTouch: 0, touched: new Set<Element>() };
+let tracking = false;
+function trackPerson() {
+  if (tracking) return;
+  tracking = true;
+  const onEvent = (e: Event) => {
+    if (!e.isTrusted) return;
+    person.lastTouch = Date.now();
+    // Scrolling makes the person busy but doesn't claim a field.
+    if (e.type === 'wheel' || e.type === 'touchmove') return;
+    // Escape, Tab and modifier keys aren't answers (and go wherever ApplyFlux last put the focus).
+    if (e.type === 'keydown' && /^(Escape|Tab|Shift|Control|Alt|Meta|CapsLock)$/.test((e as KeyboardEvent).key)) return;
+    if (e.target instanceof Element && !isNavigation(e.target)) person.touched.add(e.target);
+  };
+  for (const t of ['keydown', 'input', 'change', 'mousedown', 'pointerdown', 'wheel', 'touchstart', 'touchmove']) {
+    document.addEventListener(t, onEvent, { capture: true, passive: true });
+  }
+}
+const personBusy = () => Date.now() - person.lastTouch < IDLE_MS;
+
+/** A button that moves through the form (Next, Continue, Submit, Back), as opposed to an answer button: claims no field. */
+function isNavigation(el: Element): boolean {
+  const btn = el.closest<HTMLElement>('button, [role="button"], input[type="submit"], input[type="button"], a');
+  if (!btn) return false;
+  if ((btn as HTMLButtonElement).type === 'submit') return true;
+  const text = (btn.textContent || (btn as HTMLInputElement).value || btn.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
+  return /^(next|continue|submit|review|back|previous|apply|save|done|close|cancel)\b/i.test(text);
+}
+
+/** The largest container around a control that holds no other question (a radio group counts as one). */
+function scopeOf(el: Element): Element {
+  let node = el;
+  for (let i = 0; i < 6; i++) {
+    const parent = node.parentElement;
+    if (!parent || parent === document.body || parent.tagName === 'FORM') break;
+    const controls = Array.from(parent.querySelectorAll<HTMLInputElement>('input:not([type=hidden]), select, textarea'));
+    const questions = new Set(controls.map((c) => ((c.type === 'radio' || c.type === 'checkbox') && c.name ? `group:${c.name}` : c)));
+    if (questions.size > 1) break;
+    node = parent;
+  }
+  return node;
+}
+function touchedByPerson(el: Element): boolean {
+  if (!person.touched.size) return false;
+  const scope = scopeOf(el);
+  for (const t of person.touched) if (t.isConnected && scope.contains(t)) return true;
+  return false;
+}
+
 async function waitForPersonAnswers(ctx: RunContext, engine: EngineContext, pass: PassResult, step: number): Promise<PassResult | null> {
   let missing = pass.missingRequired.map((r) => r.field);
   const asked = [...missing];
-  let lastTouch = Date.now();
-  const touch = () => (lastTouch = Date.now());
-  const events = ['keydown', 'input', 'change', 'mousedown', 'pointerdown', 'wheel', 'touchstart'] as const;
-  events.forEach((e) => document.addEventListener(e, touch, { capture: true, passive: true }));
+  // Give the person a moment to start before anything is checked.
+  person.lastTouch = Math.max(person.lastTouch, Date.now());
 
   let marked: HTMLElement[] = [];
   const unmark = () => marked.forEach((el) => {
@@ -264,7 +316,6 @@ async function waitForPersonAnswers(ctx: RunContext, engine: EngineContext, pass
   document.addEventListener('submit', onPersonSubmit, { capture: true });
   document.addEventListener('click', onPersonSubmit, { capture: true });
   const cleanup = () => {
-    events.forEach((e) => document.removeEventListener(e, touch, { capture: true }));
     document.removeEventListener('submit', onPersonSubmit, { capture: true });
     document.removeEventListener('click', onPersonSubmit, { capture: true });
     unmark();
@@ -289,7 +340,7 @@ async function waitForPersonAnswers(ctx: RunContext, engine: EngineContext, pass
         if (left.length !== marked.length) mark(left, false);
         continue;
       }
-      if (Date.now() - lastTouch < IDLE_MS) continue;
+      if (personBusy()) continue;
       // All answered and the person paused: fill anything else once, then carry on.
       const now = await runPass(document, engine);
       if (now.missingRequired.length) {
@@ -298,6 +349,11 @@ async function waitForPersonAnswers(ctx: RunContext, engine: EngineContext, pass
         asked.push(...missing.filter((m) => !asked.some((a) => a.key === m.key)));
         await ask(missing, false);
         continue;
+      }
+      // Also learn questions ApplyFlux had answered that the person changed.
+      for (const r of now.results) {
+        const question = !r.mapping.mappedTo || r.mapping.mappedTo === 'question';
+        if (question && r.status === 'filled' && touchedByPerson(r.field.element) && !asked.some((a) => a.key === r.field.key)) asked.push(r.field);
       }
       // Remember what the person gave for the questions we could not answer.
       await report(ctx, { type: 'answers_provided', data: { answers: learnedAnswers(engine, asked), resume: true } });
@@ -324,14 +380,15 @@ async function run(ctx: RunContext) {
     await sleep(800);
     return collectAndReport(ctx, adapter.id);
   }
-  // The person was reviewing and submitted it themselves.
+  // Waiting for the person when the page loaded again: either they submitted it themselves (a confirmation
+  // page), or the page reloaded / moved on, in which case the application carries on from here.
   if (ctx.phase === 'awaiting_review' && !ctx.submitApproved) {
     const ev = collectSubmissionEvidence(document, { adapter: adapter.id, extraText: adapter.confirmationText, extraUrl: adapter.confirmationUrl, formSelector: adapter.formSelector });
     if (ev.matchedSignals.length && !ev.formStillPresent) {
       await report(ctx, { type: 'submit_attempted', data: { pageUrl: location.href } }).catch(() => {});
       await report(ctx, { type: 'submission_result', data: ev });
+      return;
     }
-    return;
   }
   if (ctx.phase === 'awaiting_verification') await waitForVerification(ctx);
 
@@ -340,7 +397,10 @@ async function run(ctx: RunContext) {
     return;
   }
 
+  trackPerson();
   const engine: EngineContext = {
+    personBusy,
+    touchedByPerson,
     adapter,
     mode: ctx.mode,
     profile: ctx.profile,

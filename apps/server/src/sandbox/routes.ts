@@ -23,9 +23,15 @@ export function sandboxPages() {
 
   r.use((_req, res, next) => {
     // Sandbox pages carry their own inline script; relax CSP for this path only.
-    res.setHeader('content-security-policy', "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; form-action 'self'");
+    res.setHeader('content-security-policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; form-action 'self'");
     res.setHeader('x-robots-tag', 'noindex');
     next();
+  });
+  // The real react-select library for the dropdown scenarios; only present where SANDBOX_REACT_SELECT points at it (tests).
+  r.get('/assets/react-select.js', (_req, res) => {
+    const file = process.env.SANDBOX_REACT_SELECT;
+    if (!file) return res.status(404).type('text/plain').send('Not available');
+    res.type('application/javascript').sendFile(file);
   });
   r.get('/jobs/:scenario', (req, res) => res.type('html').send(postingPage(scenario(req.params.scenario), ref(req.query.ref))));
   r.get('/jobs/:scenario/apply', (req, res) => res.type('html').send(applyPage(scenario(req.params.scenario), ref(req.query.ref))));

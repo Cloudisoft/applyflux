@@ -4,8 +4,8 @@ import {
   classifyQuestion,
   isSensitive,
   matchOption,
-  pickBooleanOption,
-  similarity,
+  pickOption,
+  questionSimilarity,
   questionKey,
   type AnswerRequest,
   type ResolvedAnswer,
@@ -32,14 +32,18 @@ export async function resolveAnswers(db: Db, ai: AiClient, userId: string, req: 
     (await many<{ question_key: string; answer: string; approved: boolean }>(db, 'select question_key, answer, approved from saved_answers where user_id=$1', [userId])).map((r) => [r.question_key, r]),
   );
   const approved = [...saved.values()].filter((s) => s.approved && s.answer);
-  /** The person's own answer to a differently-worded version of the same question (same kind of question only). */
-  const similarSaved = (label: string, category: string) => {
+  /**
+   * The person's own answer to a differently-worded version of the same question (same kind of question only).
+   * A choice question accepts a looser wording match, because the answer must also be one of its options.
+   */
+  const similarSaved = (label: string, category: string, options?: string[]) => {
     const key = questionKey(label);
     let best: { answer: string; score: number } | null = null;
     for (const s of approved) {
       if (classifyQuestion(s.question_key) !== category) continue;
-      const score = similarity(key, s.question_key);
-      if (score >= 0.8 && (!best || score > best.score)) best = { answer: s.answer, score };
+      const score = questionSimilarity(key, s.question_key);
+      const enough = options?.length ? score >= 0.7 && !!pickOption(options, s.answer) : score >= 0.75;
+      if (enough && (!best || score > best.score)) best = { answer: s.answer, score };
     }
     return best;
   };
@@ -56,7 +60,7 @@ export async function resolveAnswers(db: Db, ai: AiClient, userId: string, req: 
     const category = classifyQuestion(q.label);
     const s = saved.get(key);
     if (s?.approved) {
-      const opt = q.options?.length ? matchOption(q.options, s.answer)?.option : s.answer;
+      const opt = q.options?.length ? (pickOption(q.options, s.answer) ?? matchOption(q.options, s.answer))?.option : s.answer;
       if (opt) {
         out.push({ key: q.key, answer: opt, source: 'saved', confidence: 0.98, needsUser: false });
         await db.query(`update saved_answers set usage_count = usage_count + 1, last_used_at = now() where user_id=$1 and question_key=$2`, [userId, key]);
@@ -64,9 +68,9 @@ export async function resolveAnswers(db: Db, ai: AiClient, userId: string, req: 
       }
     }
     // Answered before on another form, in different words.
-    const similar = s?.approved ? null : similarSaved(q.label, category);
+    const similar = s?.approved ? null : similarSaved(q.label, category, q.options);
     if (similar) {
-      const opt = q.options?.length ? matchOption(q.options, similar.answer)?.option ?? (/^(yes|no)$/i.test(similar.answer) ? pickBooleanOption(q.options, /^yes$/i.test(similar.answer)) : null) : similar.answer;
+      const opt = q.options?.length ? pickOption(q.options, similar.answer)?.option ?? null : similar.answer;
       if (opt) {
         out.push({ key: q.key, answer: opt, source: 'saved', confidence: Math.min(0.95, similar.score), needsUser: false });
         continue;

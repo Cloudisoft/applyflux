@@ -330,6 +330,75 @@ test('Questions only the person can answer: the page stays theirs while they typ
   await api.post('/automation/stop');
 });
 
+test('Real searchable dropdowns: the person\'s choices stay put while they scroll, then it submits, and the next form reuses them', async () => {
+  const api = await newUser('dropdowns@example.com');
+  await pairViaPopup(api);
+  await api.put('/automation/preferences', { mode: 'auto', dailyLimit: 10, maxConcurrency: 1, minMatchScore: 0, excludedCompanies: [], excludedKeywords: [] });
+  await api.post('/automation/consent', { version: AUTO_SUBMIT_CONSENT_VERSION, accepted: true });
+  const job = await queue(api, 'ask-person-dropdowns');
+  await api.post('/automation/start');
+
+  const waiting = await waitForState(api, job.applicationId, ['AWAITING_REVIEW', 'NEEDS_ATTENTION', 'FAILED', 'SUBMITTED']);
+  expect(waiting.state, JSON.stringify(waiting.intervention)).toBe('AWAITING_REVIEW');
+  const page = await sandboxPage(job.ref);
+  await page.bringToFront();
+  const shown = (id: string) => page.evaluate((i) => document.querySelector(`.rs-real[data-id="${i}"] .select__single-value`)?.textContent ?? '', id);
+  const kept = (id: string) => page.evaluate((i) => (document.querySelector(`.rs-real[data-id="${i}"] input[type=hidden]`) as HTMLInputElement | null)?.value ?? '', id);
+  const choose = async (id: string, option: string) => {
+    await page.locator(`.rs-real[data-id="${id}"] .select__control`).click();
+    await page.locator(`.rs-real[data-id="${id}"] .select__option`, { hasText: option }).click();
+  };
+
+  // The person answers each dropdown, scrolling the long page between and after, the way people do.
+  const picks: Array<[string, string]> = [['team_size', '4-10 people'], ['source', 'Referral'], ['veteran_status', 'I am not a protected veteran']];
+  for (const [id, option] of picks) {
+    await choose(id, option);
+    await page.mouse.wheel(0, 900);
+    await new Promise((r) => setTimeout(r, 700));
+    await page.mouse.wheel(0, -900);
+    await new Promise((r) => setTimeout(r, 700));
+    expect(await shown(id), `${id} still shows the person's choice after scrolling`).toBe(option);
+    expect(await kept(id), `${id} still holds the person's choice after scrolling`).toBe(option);
+  }
+  // Every earlier answer is still there too (nothing was cleared while the person worked on the next one).
+  for (const [id, option] of picks) expect(await shown(id)).toBe(option);
+
+  // Then it submits by itself, without the person pressing Submit.
+  const done = await waitForState(api, job.applicationId, ['SUBMITTED', 'SUBMISSION_UNVERIFIED', 'NEEDS_ATTENTION', 'FAILED']);
+  expect(done.state, JSON.stringify(done.intervention ?? done.lastError)).toBe('SUBMITTED');
+  expect(await submissions('ask-person-dropdowns', job.ref)).toBe(1);
+
+  // The next application asks the same questions with different wording: filled and submitted without stopping.
+  const next = await queue(api, 'ask-person-dropdowns-again');
+  const second = await waitForState(api, next.applicationId, ['SUBMITTED', 'SUBMISSION_UNVERIFIED', 'NEEDS_ATTENTION', 'AWAITING_REVIEW', 'FAILED'], 90_000);
+  expect(second.state, JSON.stringify(second.intervention ?? second.lastError)).toBe('SUBMITTED');
+  expect(second.events.map((e: { type: string }) => e.type)).not.toContain('intervention');
+  expect(await submissions('ask-person-dropdowns-again', next.ref)).toBe(1);
+  await api.post('/automation/stop');
+});
+
+test('The page reloads while it waits for the person: it carries on and still submits by itself', async () => {
+  const api = await newUser('reload@example.com');
+  await pairViaPopup(api);
+  await api.put('/automation/preferences', { mode: 'auto', dailyLimit: 10, maxConcurrency: 1, minMatchScore: 0, excludedCompanies: [], excludedKeywords: [] });
+  await api.post('/automation/consent', { version: AUTO_SUBMIT_CONSENT_VERSION, accepted: true });
+  const job = await queue(api, 'ask-person');
+  await api.post('/automation/start');
+  await waitForState(api, job.applicationId, ['AWAITING_REVIEW']);
+  const page = await sandboxPage(job.ref);
+  await page.reload();
+  // Filled again after the reload, and waiting for the person again.
+  await expect.poll(() => page.inputValue('#first_name'), { timeout: 30_000 }).toBe('Ada');
+  await page.fill('#tools', 'Zendesk for four years.');
+  await page.selectOption('#shift', { label: 'Weekend' });
+  await page.click('.rs .select__control');
+  await page.click('.select__option:has-text("I am not a protected veteran")');
+  const done = await waitForState(api, job.applicationId, ['SUBMITTED', 'SUBMISSION_UNVERIFIED', 'NEEDS_ATTENTION', 'FAILED']);
+  expect(done.state, JSON.stringify(done.intervention ?? done.lastError)).toBe('SUBMITTED');
+  expect(await submissions('ask-person', job.ref)).toBe(1);
+  await api.post('/automation/stop');
+});
+
 test('If the person clicks Submit themselves, their answers are still saved and the submission tracked', async () => {
   const api = await newUser('selfsubmit@example.com');
   await pairViaPopup(api);

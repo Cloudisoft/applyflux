@@ -136,6 +136,46 @@ describe('runPass', () => {
     expect(pass.missingRequired.map((r) => r.field.element.id)).toContain('question_3');
   });
 
+  it('never writes while the person is working, and never over a field they touched', async () => {
+    const doc = load('greenhouse.html');
+    const first = doc.getElementById('first_name') as HTMLInputElement;
+    const email = doc.getElementById('email') as HTMLInputElement;
+    let busyUntil = Date.now() + 600;
+    const writes: Array<{ id: string; at: number }> = [];
+    for (const el of [first, email]) el.addEventListener('input', () => writes.push({ id: el.id, at: Date.now() }));
+    // The person is typing their own first name (empty so far) when the pass starts.
+    const started = Date.now();
+    await runPass(doc, {
+      adapter: greenhouseAdapter, mode: 'assisted', profile: profile(), savedAnswers: [], files: {},
+      personBusy: () => Date.now() < busyUntil,
+      touchedByPerson: (el) => el === first,
+    });
+    expect(first.value).toBe('');
+    expect(writes.some((w) => w.id === 'first_name')).toBe(false);
+    // Other fields were filled, but only once the person had paused.
+    expect(email.value).not.toBe('');
+    expect(Math.min(...writes.map((w) => w.at))).toBeGreaterThanOrEqual(started + 550);
+    busyUntil = 0;
+  }, 30_000);
+
+  it('keeps a choice the person made after the pass started', async () => {
+    const doc = load('greenhouse.html');
+    wireCombobox(doc, 'question_3', ['Yes', 'No']);
+    const input = doc.getElementById('question_3') as HTMLInputElement;
+    const pass = await runPass(doc, {
+      adapter: greenhouseAdapter, mode: 'auto', profile: profile(), savedAnswers: [], files: {},
+      resolved: { question_3: { key: 'question_3', answer: 'No', source: 'saved', confidence: 0.99, needsUser: false } },
+      // The person picks "Yes" while the pass waits for them to pause.
+      personBusy: () => {
+        if (!input.value) input.value = 'Yes';
+        return false;
+      },
+      touchedByPerson: () => false,
+    });
+    expect(input.value).toBe('Yes');
+    expect(pass.results.find((r) => r.field.element === input)?.reason).toBe('Answered by you');
+  });
+
   it('Auto Mode refuses unverified profile values', async () => {
     const doc = load('greenhouse.html');
     const pass = await runPass(doc, {
@@ -286,8 +326,9 @@ describe('adapters', () => {
     expect(a.restriction).toBeTruthy();
     expect(a.capabilities.autofill).toBe(false);
   });
-  it('workday never auto-submits', () => {
-    expect(workdayAdapter.capabilities.autoSubmit).toBe(false);
+  it('only restricted sites are kept from submitting (the server decides per platform via AUTO_SUBMIT_PLATFORMS)', () => {
+    expect(workdayAdapter.capabilities.autoSubmit).toBe(true);
+    expect(linkedinAdapter.capabilities.autoSubmit).toBe(false);
     expect(leverAdapter.capabilities.autofill).toBe(true);
   });
   it('serialises results for reporting', async () => {

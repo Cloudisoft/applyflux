@@ -122,6 +122,9 @@ function closeMenu(input: HTMLInputElement) {
 /** Searchable select: open it, pick the option that means the answer; type to filter only for long or async lists. */
 async function fillCombobox(field: DetectedField, value: string): Promise<FillOutcome> {
   const input = field.element as HTMLInputElement;
+  // Already answered (by the person, a moment ago): never reopen it or type over their choice.
+  const existing = comboboxValue(input).trim();
+  if (existing && !/^(select|choose|please select|--)/i.test(existing)) return { ok: true, value: existing, reason: 'Kept the value already on the page' };
   const labelsOf = (opts: HTMLElement[]) => opts.map((o) => cleanText(o.textContent));
   openMenu(input);
   let options = await waitFor(() => menuOptions(input), 1500);

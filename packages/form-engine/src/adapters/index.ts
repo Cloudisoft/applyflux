@@ -147,7 +147,7 @@ export const ashbyAdapter: PlatformAdapter = {
 export const workdayAdapter: PlatformAdapter = {
   id: 'workday',
   name: 'Workday',
-  capabilities: { autofill: true, multiStep: true, attachments: true, autoSubmit: false },
+  capabilities: { autofill: true, multiStep: true, attachments: true, autoSubmit: true },
   testStatus: 'tested_fixture',
   matchesUrl: (u) => hostIs(u.hostname, 'myworkdayjobs.com') || hostIs(u.hostname, 'myworkdaysite.com'),
   findForm: (d) =>
@@ -195,7 +195,7 @@ export const workdayAdapter: PlatformAdapter = {
 export const icimsAdapter: PlatformAdapter = {
   id: 'icims',
   name: 'iCIMS',
-  capabilities: { autofill: true, multiStep: true, attachments: true, autoSubmit: false },
+  capabilities: { autofill: true, multiStep: true, attachments: true, autoSubmit: true },
   testStatus: 'tested_fixture',
   matchesUrl: (u) => hostIs(u.hostname, 'icims.com'),
   findForm: (d) => formWithInputs(d, 'form.iCIMS_Forms, form#cp_form, form'),
@@ -222,11 +222,14 @@ export const linkedinAdapter: PlatformAdapter = {
   submitButton: () => null,
 };
 
-/** Any other careers page: deterministic detection + mapping, Assisted/Review only. */
+/**
+ * Any other careers page: deterministic detection + mapping. Submits by itself only where the server lists
+ * 'generic' in AUTO_SUBMIT_PLATFORMS, and only after every answer was filled with confidence and verified.
+ */
 export const genericAdapter: PlatformAdapter = {
   id: 'generic',
   name: 'Company career page',
-  capabilities: { autofill: true, multiStep: true, attachments: true, autoSubmit: false },
+  capabilities: { autofill: true, multiStep: true, attachments: true, autoSubmit: true },
   testStatus: 'tested_fixture',
   matchesUrl: () => true,
   findForm: (d) => {

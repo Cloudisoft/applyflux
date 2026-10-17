@@ -25,7 +25,7 @@ const RULES: Array<{ category: QuestionCategory; re: RegExp }> = [
   { category: 'relocation', re: /relocat|commut|on-?site|in[- ]office|hybrid/i },
   { category: 'experience_years', re: /how many years|years of (professional )?experience|years experience/i },
   { category: 'education', re: /degree|university|school|education|gpa/i },
-  { category: 'referral', re: /how did you (hear|find)|referr|source/i },
+  { category: 'referral', re: /how did you (\w+ ){0,2}(hear|find|learn)|referr|source/i },
   { category: 'links', re: /linkedin|github|portfolio|website|url/i },
   { category: 'contact', re: /phone|e-?mail|address|city|postal|zip/i },
   { category: 'legal_consent', re: /consent|privacy (policy|notice)|acknowledg|certify|agree|terms/i },
@@ -267,6 +267,16 @@ export function pickOption(options: string[], value: string): { option: string; 
     const hits = opts.filter((o) => re.test(normalizeText(o)));
     if (hits.length === 1) return { option: hits[0], confidence: 0.85 };
   }
+  // The same idea worded differently: the one option sharing the most word stems with the answer, covering at
+  // least half of them ("Referral" -> "Someone referred me", "Company website" -> "The company careers site").
+  // A tie means it can't tell, so nothing is picked.
+  const stems = (s: string) => normalizeText(s).replace(/[^a-z0-9 ]+/g, ' ').split(' ').filter((w) => w.length >= 4 && !/^(some|other|have|with|that|this|from|your|been|were|about)$/.test(w)).map((w) => w.slice(0, 5));
+  const want = Array.from(new Set(stems(value)));
+  if (want.length) {
+    const scored = opts.map((o) => ({ o, n: want.filter((w) => stems(o).includes(w)).length })).sort((x, y) => y.n - x.n);
+    const [top, second] = scored;
+    if (top && top.n > 0 && top.n * 2 >= want.length && (!second || second.n < top.n)) return { option: top.o, confidence: 0.82 };
+  }
   return null;
 }
 
@@ -296,7 +306,7 @@ function screeningAnswer(question: string, options: string[] | undefined, profil
   if (/driver'?s? licen[cs]e|driving licen[cs]e/.test(q)) return bool(s.driversLicense, "driver's licence");
   if (/commut|on-?site|in[- ]office|in the office|hybrid|come (in)?to (the|our) office/.test(q) && !/relocat/.test(q)) return bool(s.willingOnsite, 'on-site work');
 
-  if (/how did you (hear|find|learn)|where did you (hear|find|see)|referr(al|ed) source|source of (application|referral)|how were you referred/.test(q)) {
+  if (/how did you (\w+ ){0,2}(hear|find|learn)|where did you (\w+ )?(hear|find|see)|referr(al|ed) source|source of (application|referral)|how were you referred/.test(q)) {
     // The person's own choice, else "Google", else social media / online sources.
     const src = s.referralSource ?? 'Google';
     if (!options?.length) return ok(src, '');

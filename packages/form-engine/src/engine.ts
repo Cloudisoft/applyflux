@@ -3,7 +3,7 @@ import { classifyQuestion, isSensitive, questionKey } from '@applyflux/shared';
 import type { PlatformAdapter } from './adapters';
 import { challengeBlocksFilling, detectAuthWall, detectChallenge, type ChallengeState, type WallKind } from './challenge';
 import { detectFields } from './detect';
-import { isVisible } from './dom';
+import { isVisible, sleep } from './dom';
 import { attachFile, fillField } from './fill';
 import { CONFIDENCE_FLOOR, mapField } from './mapping';
 import type { DetectedField, FieldResult, FileAttachment, MappedKey } from './types';
@@ -18,6 +18,14 @@ export interface EngineContext {
   resolved?: Record<string, ResolvedAnswer>;
   files: { resume?: FileAttachment | null; coverLetter?: FileAttachment | null };
   coverLetterText?: string | null;
+  /**
+   * The person is working on the page right now (typing, choosing, scrolling). Nothing is written while this
+   * is true: filling a searchable dropdown focuses it and opens its menu, which would close the one the
+   * person has open and throw their choice away.
+   */
+  personBusy?: () => boolean;
+  /** The person has worked on this field during this application: it is theirs, and is never written over. */
+  touchedByPerson?: (el: Element) => boolean;
 }
 
 export interface PassResult {
@@ -100,6 +108,20 @@ export async function runPass(doc: Document, ctx: EngineContext): Promise<PassRe
     const res: FieldResult = { field, mapping, status: 'skipped', value: null };
     results.push(res);
 
+    // A field the person has worked on is theirs: report it as they left it, never write over it.
+    if (ctx.touchedByPerson?.(field.element)) {
+      const now = fresh(doc, ctx, field);
+      if (!isEmpty(now)) {
+        res.status = 'filled';
+        res.value = now.currentValue;
+        res.reason = 'Answered by you';
+      } else if (field.required) {
+        res.status = 'needs_input';
+        res.reason = 'Waiting for your answer';
+      }
+      continue;
+    }
+
     if (!isEmpty(field) && field.kind !== 'file') {
       res.status = 'filled';
       res.value = field.currentValue;
@@ -115,6 +137,7 @@ export async function runPass(doc: Document, ctx: EngineContext): Promise<PassRe
         continue;
       }
       const file = mapping.mappedTo === 'resume' ? ctx.files.resume : mapping.mappedTo === 'coverLetter' ? ctx.files.coverLetter : null;
+      if (file && !(await clearToWrite(ctx, res))) continue;
       if (file) {
         const out = attachFile(field, file);
         res.status = out.ok ? 'filled' : 'error';
@@ -128,7 +151,7 @@ export async function runPass(doc: Document, ctx: EngineContext): Promise<PassRe
     }
 
     if (mapping.mappedTo === 'coverLetterText') {
-      if (ctx.coverLetterText) await applyValue(res, ctx.coverLetterText, 'filled');
+      if (ctx.coverLetterText) await applyValue(ctx, res, ctx.coverLetterText, 'filled');
       else if (field.required) res.status = 'needs_input';
       continue;
     }
@@ -146,7 +169,7 @@ export async function runPass(doc: Document, ctx: EngineContext): Promise<PassRe
         res.reason = 'Profile value not verified; Auto Mode only uses verified facts';
         continue;
       }
-      await applyValue(res, v.value, v.verified ? 'filled' : 'uncertain');
+      await applyValue(ctx, res, v.value, v.verified ? 'filled' : 'uncertain');
       if (!v.verified && res.status === 'uncertain') res.reason = 'Filled from unverified profile data — please check';
       continue;
     }
@@ -156,7 +179,7 @@ export async function runPass(doc: Document, ctx: EngineContext): Promise<PassRe
     const category = classifyQuestion(field.label);
     const savedAnswer = saved.get(qk);
     if (savedAnswer) {
-      await applyValue(res, savedAnswer.answer, 'filled');
+      await applyValue(ctx, res, savedAnswer.answer, 'filled');
       if (res.status === 'error') {
         res.status = field.required ? 'needs_input' : 'skipped';
         res.reason = `Saved answer "${savedAnswer.answer}" does not match this form's options`;
@@ -192,7 +215,7 @@ export async function runPass(doc: Document, ctx: EngineContext): Promise<PassRe
     // Auto Mode trusts drafts that passed the server's grounding check (no invented facts) with good confidence;
     // Review and Assisted modes still flag them so the person can read them first.
     const trusted = !lowConfidence && (!isDraft || ctx.mode === 'auto');
-    await applyValue(res, resolved.answer, trusted ? 'filled' : 'uncertain');
+    await applyValue(ctx, res, resolved.answer, trusted ? 'filled' : 'uncertain');
     if (res.status === 'filled' && isDraft) res.reason = 'AI-drafted from your profile (checked against your facts)';
     if (res.status === 'uncertain') res.reason = isDraft ? 'AI-drafted from your verified profile — please review' : 'Low-confidence answer — please review';
   }
@@ -207,7 +230,36 @@ export async function runPass(doc: Document, ctx: EngineContext): Promise<PassRe
   return base;
 }
 
-async function applyValue(res: FieldResult, value: string, okStatus: 'filled' | 'uncertain') {
+/** The field as it is on the page now (the person may have answered it since the pass started). */
+function fresh(doc: Document, ctx: EngineContext, field: DetectedField): DetectedField {
+  const form = ctx.adapter.findForm(doc);
+  if (!form) return field;
+  const all = detectFields(doc, { root: form, groupSelectors: ctx.adapter.groupSelectors, buttonChoiceSelector: ctx.adapter.buttonChoiceSelector });
+  return all.find((x) => x.key === field.key) ?? all.find((x) => x.element === field.element) ?? field;
+}
+
+/** Wait until the person has stopped working on the page; then check they didn't just answer this field. */
+async function clearToWrite(ctx: EngineContext, res: FieldResult): Promise<boolean> {
+  if (!ctx.personBusy && !ctx.touchedByPerson) return true;
+  while (ctx.personBusy?.()) await sleep(250);
+  const now = fresh(res.field.element.ownerDocument, ctx, res.field);
+  const answered = now.kind === 'file' ? !!now.currentValue : !isEmpty(now);
+  if (answered) {
+    res.status = 'filled';
+    res.value = now.currentValue;
+    res.reason = 'Answered by you';
+    return false;
+  }
+  if (ctx.touchedByPerson?.(res.field.element)) {
+    res.status = res.field.required ? 'needs_input' : 'skipped';
+    res.reason = 'Waiting for your answer';
+    return false;
+  }
+  return true;
+}
+
+async function applyValue(ctx: EngineContext, res: FieldResult, value: string, okStatus: 'filled' | 'uncertain') {
+  if (!(await clearToWrite(ctx, res))) return;
   const out = await fillField(res.field, value);
   res.status = out.ok ? okStatus : 'error';
   res.value = out.value;

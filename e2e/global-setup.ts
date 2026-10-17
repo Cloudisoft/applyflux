@@ -42,6 +42,7 @@ export default async function globalSetup() {
       DOWNLOAD_SIGNING_SECRET: 'e2e-download-signing-secret-0123456789abcdef',
       AUTO_SUBMIT_PLATFORMS: 'sandbox',
       AI_PROVIDER: 'none',
+      SANDBOX_REACT_SELECT: resolve(__here, 'fixtures/react-select.bundle.js'),
     },
     stdio: ['ignore', 'inherit', 'inherit'],
     detached: true,
